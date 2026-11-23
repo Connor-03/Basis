@@ -1,0 +1,15 @@
+# never in the repository: anyone's data, keys, backups, logs or local setup
+data/
+backups/
+logs/
+local/
+kept/
+config.json
+MANIFEST.json
+dist/
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+.env*
