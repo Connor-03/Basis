@@ -175,8 +175,10 @@ def main():
         code, u = call('/api/update', {'action': 'check'})
         ok(code == 200 and u['available'] and u['latest'] == '9.9.9', 'a newer version is found')
         ok(u['customized'] == ['README.md'], 'the file the user changed is listed')
+        before = call('/api/status')[1].get('started')
         ok(call('/api/update', {'action': 'apply'})[0] == 200, 'the update starts')
-        st = wait(lambda: (lambda d: d if d.get('version') == '9.9.9' else None)(call('/api/status')[1]), 180, 'the program to come back on 9.9.9')
+        # a new process on 9.9.9: the old one reads the new VERSION file in the moment before it exits
+        st = wait(lambda: (lambda d: d if d.get('version') == '9.9.9' and d.get('started') != before else None)(call('/api/status')[1]), 180, 'the program to come back on 9.9.9')
         ok(bool(st), 'the update is installed and the program restarted')
         code, u = call('/api/update')
         last = u.get('last') or {}
@@ -189,9 +191,10 @@ def main():
         # an update that cannot start: the old version must come back
         publish(app, '9.9.10', lambda files: files.update({'server.py': b'raise SystemExit(3)\n'}))
         call('/api/update', {'action': 'check'})
+        before = call('/api/status')[1].get('started')
         ok(call('/api/update', {'action': 'apply'})[0] == 200, 'a broken update starts')
         time.sleep(4)
-        st = wait(lambda: (lambda d: d if d.get('app') == 'basis' else None)(call('/api/status')[1]), 240, 'the program to come back after the broken update')
+        st = wait(lambda: (lambda d: d if d.get('app') == 'basis' and d.get('started') != before else None)(call('/api/status')[1]), 240, 'the program to come back after the broken update')
         ok(bool(st) and st.get('version') == '9.9.9', f"the broken update is undone (running {st and st.get('version')})")
         with open(os.path.join(app, 'server.py'), 'rb') as f:
             ok(len(f.read()) > 1000, 'server.py is the working one again')

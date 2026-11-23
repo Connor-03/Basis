@@ -50,7 +50,7 @@ db.x('CREATE TABLE IF NOT EXISTS live_points(ts REAL PRIMARY KEY, value REAL NOT
 if 'loan' not in {r['name'] for r in db.q('PRAGMA table_info(live_points)')}:
     db.x('ALTER TABLE live_points ADD COLUMN loan REAL')     # the margin loan at that moment, for the Assets chart
 ALERT_DEFAULTS = {'monday_menu': True, 'margin': True, 'margin_threshold': 2000, 'big_move_pct': 5.0, 'doom': True}
-STATE = {'data_v': 1, 'quote_v': 0, 'model': None, 'model_key': None, 'model_at': 0, 'menu': None, 'menu_at': 0,
+STATE = {'started': time.time(), 'data_v': 1, 'quote_v': 0, 'model': None, 'model_key': None, 'model_at': 0, 'menu': None, 'menu_at': 0,
          'sync': {}, 'errors': [], 'seen': time.time()}
 JOB = {'running': False, 'step': '', 'error': None, 'done': False}       # the first sync after linking a brokerage
 LOCK = threading.Lock()
@@ -515,6 +515,7 @@ def open_link(url):
 def restart(snap=''):
     """Desktop: ask the launcher (basis.pyw) for a restart by leaving a note and exiting with code 75. If the program
     does not come back, the launcher restores snapshot `snap`."""
+    STATE['restarting'] = True                           # nothing else may start in the moment before the exit
     with open(os.path.join(DATA, 'restart.json'), 'w', encoding='utf-8') as f:
         json.dump({'snap': snap or '', 'at': time.time()}, f)
     threading.Timer(0.6, lambda: os._exit(75)).start()
@@ -687,7 +688,8 @@ class H(BaseHTTPRequestHandler):
             if p == '/api/snaptrade':
                 return self._send(200, snap_state())
             if p == '/api/status':
-                return self._send(200, {'app': 'basis', 'version': paths.version(), 'idle': round(time.time() - STATE['seen'], 1),
+                return self._send(200, {'app': 'basis', 'version': paths.version(), 'started': STATE['started'],
+                                        'restarting': bool(STATE.get('restarting')), 'idle': round(time.time() - STATE['seen'], 1),
                                         'closed': STATE.get('bye', 0) >= STATE['seen'],
                                         'sync': STATE['sync'], 'errors': STATE['errors'], 'session': market.session_now()})
             return self._err(404, 'not found')
@@ -1107,6 +1109,8 @@ def post_action(p, b):
         if act == 'check':
             update.check(cfg, force=True)
         elif act == 'apply':
+            if STATE.get('restarting'):
+                raise ValueError('Basis is restarting. Try again in a moment.')
             if agent._run['busy']:
                 raise ValueError('Claude is working in the Customize chat. Wait for it to finish, then update.')
             return update.apply(agent.snapshot, restart)
