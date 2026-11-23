@@ -4,7 +4,6 @@
 ; outside this folder, and is left alone by install, update and uninstall.
 
 #define AppVersion GetEnv("BASIS_VERSION")
-#define Launch "-B -X utf8 ""{app}\app\basis.pyw"""
 
 [Setup]
 AppId={{8F3B5C1E-6A2D-4E9B-9C47-B45151A0C0DE}
@@ -39,11 +38,11 @@ Source: "..\..\dist\stage\python\*"; DestDir: "{app}\python"; Flags: recursesubd
 Source: "..\..\dist\stage\app\*"; DestDir: "{app}\app"; Flags: recursesubdirs ignoreversion
 
 [Icons]
-Name: "{autoprograms}\Basis"; Filename: "{app}\python\pythonw.exe"; Parameters: {#Launch}; WorkingDir: "{app}\app"; IconFilename: "{app}\app\web\basis.ico"; Comment: "Portfolio dashboard"
-Name: "{autodesktop}\Basis"; Filename: "{app}\python\pythonw.exe"; Parameters: {#Launch}; WorkingDir: "{app}\app"; IconFilename: "{app}\app\web\basis.ico"; Tasks: desktopicon
+Name: "{autoprograms}\Basis"; Filename: "{app}\python\pythonw.exe"; Parameters: "-B -X utf8 ""{app}\app\basis.pyw"""; WorkingDir: "{app}\app"; IconFilename: "{app}\app\web\basis.ico"; Comment: "Portfolio dashboard"
+Name: "{autodesktop}\Basis"; Filename: "{app}\python\pythonw.exe"; Parameters: "-B -X utf8 ""{app}\app\basis.pyw"""; WorkingDir: "{app}\app"; IconFilename: "{app}\app\web\basis.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\python\pythonw.exe"; Parameters: {#Launch}; WorkingDir: "{app}\app"; Description: "Open Basis"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\python\pythonw.exe"; Parameters: "-B -X utf8 ""{app}\app\basis.pyw"""; WorkingDir: "{app}\app"; Description: "Open Basis"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\app"

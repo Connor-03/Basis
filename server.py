@@ -737,8 +737,16 @@ def activity(qs):
         where.append('r.account_id=?')
         args.append(int(acct))
     rows = db.q(sql + (' WHERE ' + ' AND '.join(where) if where else '') + ' ORDER BY r.activity_date DESC, r.import_id, r.pos', args)
+    # inside the dates an uploaded file covers, the file's rows are the record and SnapTrade's copies of the same
+    # trades are left out, exactly as the numbers are worked out (fin/imports.py account_events)
+    windows = {w['account_id']: (w['a'], w['b']) for w in db.q(
+        "SELECT account_id, MIN(activity_date) AS a, MAX(activity_date) AS b FROM raw_rows WHERE fp NOT LIKE 'snap:%' "
+        "AND fp NOT LIKE 'snapshot:%' GROUP BY account_id")}
     out = []
     for r in rows:
+        win = windows.get(r['account_id'])
+        if win and r['fp'].startswith('snap:') and win[0] < (r['activity_date'] or '') < win[1]:
+            continue
         data = json.loads(r['data'])
         if 'positions' in data:
             e = {'date': r.get('activity_date') or '', 'kind': 'snapshot', 'sub': 'positions', 'symbol': '',

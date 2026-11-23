@@ -242,3 +242,34 @@ def session_now():
     if 960 <= m < 1200:
         return 'post'
     return 'closed'
+
+
+def market_holidays(year):
+    """Days the New York Stock Exchange is closed in a year (the regular ones; one-off closures are not known here)."""
+    from datetime import date as _date, timedelta as _td
+
+    def nth(month, weekday, n):                      # the n-th given weekday of a month (n=-1: the last)
+        if n > 0:
+            d = _date(year, month, 1)
+            d += _td(days=(weekday - d.weekday()) % 7 + 7 * (n - 1))
+        else:
+            d = _date(year + (month == 12), month % 12 + 1, 1) - _td(days=1)
+            d -= _td(days=(d.weekday() - weekday) % 7)
+        return d
+
+    def observed(d):                                 # Saturday holidays are kept on Friday, Sunday ones on Monday
+        return d - _td(days=1) if d.weekday() == 5 else d + _td(days=1) if d.weekday() == 6 else d
+
+    a, b, c = year % 19, year // 100, year % 100     # Easter (Gregorian), for Good Friday
+    h = (19 * a + b - b // 4 - (b - (b + 8) // 25 + 1) // 3 + 15) % 30
+    i, k = c // 4, c % 4
+    el = (32 + 2 * (b % 4) + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * el) // 451
+    easter = _date(year, (h + el - 7 * m + 114) // 31, (h + el - 7 * m + 114) % 31 + 1)
+    out = {nth(1, 0, 3), nth(2, 0, 3), easter - _td(days=2), nth(5, 0, -1), observed(_date(year, 7, 4)), nth(9, 0, 1),
+           nth(11, 3, 4), observed(_date(year, 12, 25))}
+    if _date(year, 1, 1).weekday() != 5:             # a Saturday New Year's Day is not made up on the Friday before
+        out.add(observed(_date(year, 1, 1)))
+    if year >= 2022:
+        out.add(observed(_date(year, 6, 19)))
+    return out

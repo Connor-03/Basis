@@ -3075,17 +3075,20 @@
     const p = d.position || {}, q = d.quote || {}, prof = d.profile || {}, inc = d.income_projection || {};
     const chartBox = h('div', { class: 'chart' });
     const lots = (p.lots || []).filter((l) => l.qty > 1e-6);
+    const held = (p.accounts || []).filter((a) => a.qty > 1e-9), unit = p.class === 'Crypto' ? 'coins' : 'shares';
     openSheet(
       h('h1', { text: sym }), h('p', { class: 'sub', text: [p.name || q.longName, prof.sector_name, prof.industry || prof.category].filter(Boolean).join(' · ') }),
-      h('div', { class: 'grid g4' },
+      h('div', { class: 'grid g3' },
         h('div', { class: 'card tile' }, h('div', { class: 'label', text: 'Price' }), h('div', { class: 'val ' + tone(q.regularMarketChangePercent), text: price(q.regularMarketPrice || p.price) }),
           h('div', { class: 'small', text: spct((q.regularMarketChangePercent || 0) / 100, 2) + ' today' }),
           isNum(p.from_ath) ? h('div', { class: 'small', text: p.from_ath > -0.005 ? `At its all-time high (${price(p.ath)})` : `${pct(-p.from_ath, 1)} under its all-time high of ${price(p.ath)} (${shortDate(p.ath_date)})` }) : null),
-        tile('Value', money(p.value, 0), '', `${qty(p.qty)} shares, ${pct(p.weight)} of holdings`),
+        tile(unit === 'coins' ? 'Coins you hold' : 'Shares you hold', isNum(p.qty) ? qty(p.qty) : '0', '', !held.length ? 'none held now'
+          : held.length === 1 ? `in ${held[0].account}${lots.length > 1 ? `, ${lots.length} lots` : ''}` : held.map((a) => `${qty(a.qty)} in ${a.account}`).join(', ')),
+        tile('Value', money(p.value, 0), '', isNum(p.weight) ? `${pct(p.weight)} of holdings` : ''),
         tile('Total gain', isNum(p.gain) ? (CENSOR ? spct(p.gain_pct, 1) : smoney(p.gain, 0)) : 'basis unknown', tone(p.gain), (isNum(p.avg_cost) ? `avg cost ${price(p.avg_cost)}` : '') + (isNum(p.vs_m2) ? `${isNum(p.avg_cost) ? ', ' : ''}${m2Word(p.vs_m2)}` : '')),
         tile('Income / yr', money(inc.annual || 0, 0), '', inc.yield ? `yield ${pct(inc.yield, 2)}` : 'no dividend')),
       h('section', { class: 'block' }, card('Price, last year, with your buys and sells', h('div', { class: 'legend' }, h('span', {}, mkKey('var(--s-blue)'), 'Price'), h('span', {}, mkKey('var(--up)', true), 'Buy'), h('span', {}, mkKey('var(--down)', true), 'Sell')), chartBox)),
-      lots.length ? h('section', { class: 'block' }, card('Lots you hold', table([
+      lots.length ? h('section', { class: 'block' }, card(`Lots you hold: ${qty(p.qty)} ${unit} in ${lots.length} lot${lots.length === 1 ? '' : 's'}`, table([
         { label: 'Acquired', get: (l) => shortDate(l.date) }, { label: 'How', get: (l) => l.src }, { label: 'Shares', r: true, get: (l) => qty(l.qty) },
         { label: 'Cost', r: true, get: (l) => (isNum(l.cost) ? money(l.cost) : 'unknown') }, { label: 'Per share', r: true, get: (l) => (isNum(l.cost) ? price(l.cost / l.qty) : '') }], lots))) : null,
       h('section', { class: 'block' }, card('Statement log', actTable(d.activity))));

@@ -225,9 +225,42 @@ TYPES = {
 }
 
 
+def _trading_day(d):
+    from .market import market_holidays
+    return d.weekday() < 5 and d not in market_holidays(d.year)
+
+
+def fill_date(a):
+    """The day a trade happened. Some brokers stamp an order that waited (a limit order left open for days) with the
+    day it was placed, not the day it filled. The settlement date still shows the truth: stocks and options settle one
+    business day after the trade (two before May 28, 2024). When that points two or more business days past the
+    stamped date, the trade is dated from its settlement. A single day's difference is left alone: holidays and
+    after-hours trades explain those."""
+    t, s = _d(a.get('trade_date')), _d(a.get('settlement_date'))
+    if not t or not s or (a.get('type') or '').upper() not in ('BUY', 'SELL'):
+        return t or s
+    try:
+        td, d = date.fromisoformat(t), date.fromisoformat(s)
+    except ValueError:
+        return t
+    for _ in range(1 if s >= '2024-05-28' else 2):          # back over the settlement lag, weekends skipped
+        d -= timedelta(days=1)
+        while d.weekday() >= 5:
+            d -= timedelta(days=1)
+    gap, x = 0, td
+    while x < d and gap < 2:                                 # business days from the stamped date to that day
+        x += timedelta(days=1)
+        gap += x.weekday() < 5
+    if gap < 2:
+        return t
+    while not _trading_day(d) and d > td:                    # the market was shut that day: the day before
+        d -= timedelta(days=1)
+    return d.isoformat()
+
+
 def normalize(a):
     t = (a.get('type') or '').upper()
-    d = _d(a.get('trade_date')) or _d(a.get('settlement_date'))
+    d = fill_date(a)
     if not d:
         return None
     sym, name = _sym(a)
@@ -236,7 +269,7 @@ def normalize(a):
     fee = abs(_f(a.get('fee')) or 0.0)
     amount = (_f(a.get('amount')) or 0.0) - fee            # the cash that actually moved
     opt = _opt(a)
-    ev = {'date': d, 'settle': _d(a.get('settlement_date')) or d, 'ts': a.get('trade_date') or d, 'code': t,
+    ev = {'date': d, 'settle': _d(a.get('settlement_date')) or d, 'ts': a.get('trade_date') if _d(a.get('trade_date')) == d else d, 'code': t,
           'symbol': (opt or {}).get('underlying') or sym, 'qty': abs(units) if units is not None else None,
           'price': price, 'amount': amount, 'desc': desc, 'kind': 'other', 'sub': t.lower(), 'name': name or ''}
     if t in ('BUY', 'SELL', 'REI'):
