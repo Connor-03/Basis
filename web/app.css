@@ -742,3 +742,4 @@ body.setup .content { padding-bottom: 40px; }
 .about .kv span:last-child { font-family: var(--sans); overflow-wrap: anywhere; }
 .about .check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--body); }
 .credit { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--line-soft); font-size: 13.5px; color: var(--body); }
+.credit a { color: var(--link); text-underline-offset: 3px; }

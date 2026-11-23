@@ -2321,9 +2321,9 @@
           } }), msg))
         : h('p', { class: 'faint', style: 'font-size:12.5px;margin:10px 0 0', text: u && u.mode === 'server' ? 'This copy runs from its source on a server and is updated there.' : 'This copy runs from its source and is updated with git.' }),
       h('div', { class: 'cbtns', style: 'margin-top:14px' },
-        h('button', { class: 'btn small', type: 'button', text: 'Source on GitHub', onclick: () => openLink('https://github.com/Connor-03/Basis') }),
-        h('button', { class: 'btn small', type: 'button', text: 'connoraherne.com', onclick: () => openLink('https://connoraherne.com') })),
-      h('p', { class: 'credit', text: 'Built by Connor Aherne, assisted by Agentic Intelligence.' }),
+        h('button', { class: 'btn small', type: 'button', text: 'Source on GitHub', onclick: () => openLink('https://github.com/Connor-03/Basis') })),
+      h('p', { class: 'credit' }, 'Built by Connor Aherne, assisted by Agentic Intelligence. ',
+        h('a', { href: 'https://connoraherne.com', target: '_blank', rel: 'noopener', text: 'connoraherne.com', onclick: (e) => { e.preventDefault(); openLink('https://connoraherne.com'); } })),
       h('p', { class: 'faint', style: 'font-size:12px;margin:6px 0 0', text: 'Basis shows your own records and public market data. It is not financial advice, and its estimates (the margin buffer above all) can be wrong: your broker’s own numbers are the ones that count.' }));
   }
   // while the desktop window is open the page checks in, and says goodbye when it closes, so the program can stop

@@ -1,5 +1,9 @@
 # Changes
 
+## 1.0.1
+
+- The credit in Data and settings links to connoraherne.com.
+
 ## 1.0.0
 
 First public version.
