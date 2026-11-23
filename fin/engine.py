@@ -221,7 +221,11 @@ class Replay:
         return self
 
     def _snapshot(self, d):
-        hold = {s: round(self.held(s), 8) for s in self.lots if abs(self.held(s)) > EPS}
+        hold = {}
+        for s, lots in self.lots.items():
+            q = sum(l['qty'] for l in lots)
+            if abs(q) > EPS:
+                hold[s] = round(q, 8)
         self.snapshots.append((d, hold, self.cash, self.option_cost(), self._day_flow))
         self._day_flow = 0.0
 

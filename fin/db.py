@@ -79,6 +79,16 @@ class DB:
         with self.lock:
             return [dict(r) for r in self.c.execute(sql, args).fetchall()]
 
+    def tuples(self, sql, args=()):
+        """Rows as plain tuples: for big reads where building a dict per row costs more than the query."""
+        with self.lock:
+            cur = self.c.cursor()
+            cur.row_factory = None
+            try:
+                return cur.execute(sql, args).fetchall()
+            finally:
+                cur.close()
+
     def one(self, sql, args=()):
         r = self.q(sql, args)
         return r[0] if r else None

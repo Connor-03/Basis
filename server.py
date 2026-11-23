@@ -52,7 +52,7 @@ if 'loan' not in {r['name'] for r in db.q('PRAGMA table_info(live_points)')}:
 ALERT_DEFAULTS = {'monday_menu': True, 'margin': True, 'margin_threshold': 2000, 'big_move_pct': 5.0, 'doom': True}
 STATE = {'started': time.time(), 'data_v': 1, 'quote_v': 0, 'model': None, 'model_key': None, 'model_at': 0, 'menu': None, 'menu_at': 0,
          'sync': {}, 'errors': [], 'seen': time.time()}
-JOB = {'running': False, 'step': '', 'error': None, 'done': False}       # the first sync after linking a brokerage
+JOB = {'running': False, 'step': '', 'error': None, 'done': False, 'waiting': False, 'skip': False}       # the first sync after linking a brokerage
 LOCK = threading.Lock()
 MAX_UPLOAD = 25 * 1024 * 1024
 
@@ -66,7 +66,15 @@ def bump():
     STATE['menu'] = None
 
 
-def model(force=False):
+def model(force=False, stale_ok=False):
+    """The model for the current data and prices. stale_ok: while the background loop is rebuilding it (after new
+    prices), return the last one at once instead of waiting, so a page never waits on a rebuild it did not ask for."""
+    if not force and STATE['model'] is not None and STATE['model_key'] == (STATE['data_v'], STATE['quote_v']):
+        return STATE['model']
+    if stale_ok and not force and STATE['model'] is not None:
+        if not LOCK.acquire(blocking=False):
+            return STATE['model']
+        LOCK.release()
     with LOCK:
         key = (STATE['data_v'], STATE['quote_v'])
         if not force and STATE['model'] is not None and STATE['model_key'] == key:
@@ -145,9 +153,16 @@ def worker():
             first = min((a['first_date'] for a in m['accounts'] if a.get('first_date')), default=date.today().isoformat())
             start = (date.fromisoformat(first) - timedelta(days=45)).isoformat()
             et = market.eastern_now()
+            held_now = {p['symbol'] for p in m['positions']}
+            if not JOB['running'] and held_now - STATE.get('held_seen', set()):
+                last_hist = last_prof = last_div = 0             # a new holding: its history, sector and dividends now
+                STATE['held_seen'] = held_now
+            if not JOB['running'] and start < STATE.get('hist_start', start):
+                last_hist = 0                                    # the history reaches further back now: its prices too
             if now - last_hist > 6 * 3600 or (et.hour == 16 and et.minute >= 30 and now - last_hist > 1800):
                 n = sync.history(db, all_syms, start, log=log)
                 last_hist = now
+                STATE['hist_start'] = start
                 STATE['sync']['history'] = datetime.now().isoformat(timespec='seconds')
                 if n:
                     bump()
@@ -179,15 +194,15 @@ def worker():
                     STATE['intra_at_' + rng] = now
                     build_intraday(rng)
             st = snaptrade.public_state()
+            loading = any(snaptrade.still_loading(db, r['account_id']) for r in db.q('SELECT DISTINCT account_id FROM snap_accounts WHERE account_id IS NOT NULL'))
             if st['registered'] and not JOB['running'] and db.one('SELECT snap_id FROM snap_accounts LIMIT 1') and \
-                    now - STATE.get('snap_at', 0) > (3600 if session == 'regular' else 6 * 3600):
+                    now - STATE.get('snap_at', 0) > (300 if loading else 3600 if session == 'regular' else 6 * 3600):
                 STATE['snap_at'] = now
                 try:
                     res = snaptrade.sync(db, log=log)
                     if res['new_rows'] or res['accounts']:
                         bump()
-                    rematch(res['refilled'])
-                    reconcile_new()
+                    after_sync(res)
                 except Exception as e:
                     log('snaptrade sync:', e)
             update.check(db.setting('update', {}) or {})
@@ -391,19 +406,38 @@ def reconcile_new():
     if done is None and not DESKTOP:
         done = [r['snap_id'] for r in rows]             # a copy set up before this existed: all were done by hand
         db.set_setting('snap_reconciled', done)
-    new = [r for r in rows if r['snap_id'] not in set(done or [])]
+    new = [r for r in rows if r['snap_id'] not in set(done or []) and not snaptrade.still_loading(db, r['account_id'])]
     if not new:
         return []
-
-    def build():
-        bump()
-        return model(force=True)
-    changes = reconcile.setup(db, build, lambda aid: snaptrade.broker_positions(db, aid), log=log,
+    changes = reconcile.setup(db, build_unmatched, lambda aid: snaptrade.broker_positions(db, aid), log=log,
                               only={r['account_id'] for r in new})
     db.set_setting('snap_reconciled', sorted(set(done or []) | {r['snap_id'] for r in new}))
     db.log('snaptrade first reconcile', {'accounts': len(new), 'changes': changes[:60]})
     bump()
     return changes
+
+
+def build_unmatched():
+    """The model from the activity rows alone, without the broker's share counts standing in for rows that have not
+    arrived (analytics._pending): what matching with the broker compares against."""
+    bump()
+    return analytics.build(db, sync.cached_quotes(db), pending=False)
+
+
+def after_sync(res):
+    """What every SnapTrade sync is followed by: history read again where it had a gap (match those accounts again),
+    a full pass after an update (match every account again, on the whole history), the first matching for accounts
+    linked since, and for a week after that, taking back what it added once late trade rows land."""
+    if res.get('rechecked') and DESKTOP:
+        rematch([r['account_id'] for r in db.q('SELECT DISTINCT account_id FROM snap_accounts WHERE account_id IS NOT NULL')])
+    else:
+        rematch(res.get('refilled'))
+    reconcile_new()
+    try:
+        if reconcile.heal(db, build_unmatched, lambda aid: snaptrade.broker_positions(db, aid), log=log):
+            bump()
+    except Exception as e:
+        log('share matching heal:', e)
 
 
 def rematch(accounts):
@@ -413,11 +447,14 @@ def rematch(accounts):
     if not accounts:
         return
     done = set(db.setting('snap_reconciled', None) or [])
+    seen = db.setting('snap_setup', {}) or {}
     for aid in set(accounts):
         db.x("DELETE FROM opening WHERE account_id=? AND (note LIKE '%to match the broker (SnapTrade)%' OR note LIKE 'inferred: sold before any buy%')", (aid,))
         db.x("DELETE FROM adjustments WHERE account_id=? AND note LIKE '%to match the broker (SnapTrade)%'", (aid,))
         done -= {r['snap_id'] for r in db.q('SELECT snap_id FROM snap_accounts WHERE account_id=?', (aid,))}
+        seen.pop(str(aid), None)
     db.set_setting('snap_reconciled', sorted(done))
+    db.set_setting('snap_setup', seen)
     db.log('history refilled', {'accounts': sorted(set(accounts))})
     log('history refilled for accounts', sorted(set(accounts)), '- matching share counts again')
     bump()
@@ -434,8 +471,20 @@ def first_sync():
             res = snaptrade.sync(db, log=log)
             if not res['accounts']:
                 raise ValueError('SnapTrade has no accounts to show yet. A broker can take a few minutes after it is linked. Try again shortly.')
+            # a connection made minutes ago: SnapTrade lists the holdings at once but gathers the history over a while.
+            # Matching share counts before it is done would count everything as held from the day it was linked.
+            waited, JOB['skip'] = 0, False
+            while res['loading'] and waited < 600 and not JOB['skip']:
+                JOB.update(waiting=True, step=f"SnapTrade is still gathering your history from {', '.join(sorted(set(res['loading'])))}. "
+                                              'Basis waits for it so your charts start on the right day. This can take a few minutes.')
+                for _ in range(15):
+                    if JOB['skip']:
+                        break
+                    time.sleep(1)
+                waited += 15
+                res = snaptrade.sync(db, log=log)
+            JOB['waiting'] = False
             STATE['snap_at'] = time.time()
-            rematch(res['refilled'])
             bump()
             JOB['step'] = 'Downloading price history for your holdings'
             m, all_syms, live = needed_symbols()
@@ -444,10 +493,17 @@ def first_sync():
                          progress=lambda i, n: JOB.update(step=f'Downloading price history for your holdings ({i} of {n})'))
             bump()
             JOB['step'] = 'Matching share counts with your broker'
-            reconcile_new()
-            JOB['step'] = 'Getting live prices'
+            after_sync(res)
+            JOB['step'] = 'Reading sectors, dividends and highs for your holdings'
             m, all_syms, live = needed_symbols()
+            first = min((a['first_date'] for a in m['accounts'] if a.get('first_date')), default=first)
             sync.history(db, all_syms, (date.fromisoformat(first) - timedelta(days=45)).isoformat(), log=log)
+            held = [p['symbol'] for p in m['positions']]
+            sync.profiles(db, [x for x in all_syms if x in set(live)], log=log)
+            sync.dividends(db, held, log=log)
+            sync.ath(db, held, log=log)
+            STATE['held_seen'] = set(held)
+            JOB['step'] = 'Getting live prices'
             sync.quotes(db, live)
             STATE['quote_v'] += 1
             STATE['sync']['quotes'] = datetime.now().isoformat(timespec='seconds')
@@ -466,7 +522,7 @@ def first_sync():
             traceback.print_exc()
             JOB['error'] = f'Something went wrong while reading your accounts: {str(e)[:300]}. Press Try again: it picks up where it stopped.'
         finally:
-            JOB['running'] = False
+            JOB['running'] = JOB['waiting'] = False
     threading.Thread(target=work, daemon=True).start()
     return {'ok': True}
 
@@ -617,7 +673,7 @@ class H(BaseHTTPRequestHandler):
             if p.startswith('/static/'):
                 return self._file(p[len('/static/'):])
             if p == '/api/model':
-                m = model(force=qs.get('force') == '1')
+                m = model(force=qs.get('force') == '1', stale_ok=True)
                 return self._send(200, slim(m))
             if p == '/api/options':
                 return self._send(200, menu(force=qs.get('refresh') == '1'))
@@ -747,6 +803,9 @@ def slim(m):
     out['macro'] = [x for x in (db.setting('macro_auto', []) or []) if x['d'] >= today and x['label'] == 'FOMC decision'][:3]
     out['app'] = {'mode': paths.MODE, 'version': paths.version(), 'ready': setup_done(), 'alerts': push.AVAILABLE,
                   'phone_url': CONFIG.get('phone_url')}
+    # accounts SnapTrade is still gathering history for: their holdings show from today until it is done
+    out['snap_loading'] = [r['name'] for r in db.q('SELECT name, id FROM accounts WHERE id IN (SELECT account_id FROM snap_accounts)')
+                           if snaptrade.still_loading(db, r['id'])]
 
     return out
 
@@ -1088,6 +1147,9 @@ def post_action(p, b):
         act = b.get('action')
         if act == 'sync':
             return first_sync()
+        if act == 'skip-wait':                            # go on without waiting for SnapTrade to finish its history
+            JOB['skip'] = True
+            return {'ok': True}
         if act == 'agent':                                # 'skipped' or 'done': the optional Claude step was answered
             cur = db.setting('first_run', {}) or {}
             db.set_setting('first_run', {**cur, 'agent_step': str(b.get('value') or 'skipped')[:20]})
@@ -1139,7 +1201,8 @@ def post_action(p, b):
         except snaptrade.SnapError as e:
             raise ValueError(str(e))
         STATE['snap_at'] = time.time()
-        rematch(res['refilled'])
+        if not JOB['running']:
+            after_sync(res)
         done = set(db.setting('snap_reconciled', None) or [])
         if any(r['snap_id'] not in done for r in db.q('SELECT snap_id FROM snap_accounts WHERE account_id IS NOT NULL')):
             first_sync()                                  # a brokerage linked just now: fetch its history and match its counts

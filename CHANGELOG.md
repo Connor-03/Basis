@@ -1,5 +1,21 @@
 # Changes
 
+## 1.0.3
+
+- History for a brokerage linked just before the first sync: SnapTrade lists the holdings at once but gathers the
+  history over a few minutes. The first sync now waits for it (or you can go on without waiting), and an account
+  SnapTrade is still loading is read again every few minutes until it is done, with a note on the home page meanwhile.
+- Share counts the history does not explain become holdings from before the history starts, at the broker's cost,
+  instead of appearing as bought on the day Basis was installed. A trade made just before that, whose row SnapTrade
+  delivers a day later, is taken back off once its row arrives.
+- Sectors, dividends and all-time highs are read during the first sync, not hours later, and a new holding gets its
+  price history, sector and dividends as soon as it appears.
+- Holdings that only the broker's share count knows about get their price history in charts and correlations.
+- Copies set up with 1.0.1 or 1.0.2 read every account's history once more after this update and match share counts
+  again on the whole history.
+- Faster: the model builds about a quarter faster, pages never wait for the rebuild after new prices, a loading screen
+  shows while Basis opens, and "Updating" shows in the top bar whenever something takes a moment.
+
 ## 1.0.2
 
 - Fixed the first sync stopping with "bad parameter or other API misuse": two SnapTrade syncs could write at once.

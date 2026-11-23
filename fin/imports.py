@@ -218,6 +218,22 @@ def normalize_row(fp, data):
     return robinhood.normalize(data)
 
 
+_NORM = {}       # (row id, fingerprint) -> normalized event: stored rows never change, and the model is rebuilt often
+
+
+def _normalized(r):
+    key = (r['id'], r['fp'])
+    if key not in _NORM:
+        _NORM[key] = normalize_row(r['fp'], json.loads(r['data']))
+    e = _NORM[key]
+    if not e:
+        return None
+    e = dict(e)                                           # callers change events in place
+    if e.get('option'):
+        e['option'] = dict(e['option'])
+    return e
+
+
 def account_events(db, account_id):
     """All stored rows of an account as engine events, plus snapshot-derived events for positions accounts."""
     evs, snaps = [], []
@@ -236,7 +252,7 @@ def account_events(db, account_id):
                 continue                                      # inside the uploaded files' dates: the CSV wins
             boundary.append(r)                                # first/last day: a file can stop partway through it
             continue
-        e = normalize_row(r['fp'], json.loads(r['data']))
+        e = _normalized(r)
         if e:
             e['pos'], e['import_id'], e['row_id'] = r['pos'], r['import_id'], r['id']
             if r['fp'].startswith('snap:'):
@@ -246,7 +262,7 @@ def account_events(db, account_id):
     # boundary days: keep a SnapTrade row only when no CSV row on that day is the same trade or payment
     taken = set()
     for r in boundary:
-        e = normalize_row(r['fp'], json.loads(r['data']))
+        e = _normalized(r)
         if not e:
             continue
         twin = None

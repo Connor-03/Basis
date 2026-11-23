@@ -59,13 +59,31 @@
   const icon = (d) => { const v = s('svg', { viewBox: '0 0 24 24', class: 'icon', fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round' }); v.append(s('path', { d })); return v; };
   const WARN_ICON = 'M12 3l10 18H2L12 3zM12 10v5M12 18v.5';
 
+  // a request slower than 0.7 s shows "Updating" in the top bar, so a wait never looks like a freeze (long polls and the
+  // background status checks are left out)
+  let busyN = 0;
+  const busyEl = document.getElementById('busyInfo');
   async function api(path, opts = {}) {
     const o = { headers: { 'X-Requested-With': 'finance' }, ...opts };
     if (opts.json !== undefined) { o.method = 'POST'; o.body = JSON.stringify(opts.json); o.headers['Content-Type'] = 'application/json'; }
-    const r = await fetch(path, o);
-    const data = await r.json().catch(() => ({ error: 'bad response' }));
-    if (!r.ok) throw new Error(data.error || r.statusText);
-    return data;
+    const quiet = /wait=1|\/api\/(status|ping|first-run)/.test(path);
+    let shown = false;
+    const t = quiet ? null : setTimeout(() => { shown = true; busyN += 1; if (busyEl) busyEl.hidden = false; }, 700);
+    try {
+      const r = await fetch(path, o);
+      const data = await r.json().catch(() => ({ error: 'bad response' }));
+      if (!r.ok) throw new Error(data.error || r.statusText);
+      return data;
+    } finally {
+      clearTimeout(t);
+      if (shown) { busyN -= 1; if (busyEl && busyN <= 0) busyEl.hidden = true; }
+    }
+  }
+  // a page-sized wait: what is happening, and after a while, why it is taking a moment
+  function loadingView(text, slow) {
+    const box = h('div', { class: 'loadview' }, h('div', { class: 'lbar' }, h('i')), h('div', { class: 'ltext', text: text || 'Loading' }), h('div', { class: 'lslow faint' }));
+    setTimeout(() => { if (box.isConnected) box.lastChild.textContent = slow || 'Still working. This takes longest the first time after a start.'; }, 4000);
+    return box;
   }
 
   // ---- state and routing --------------------------------------------------------------------------------------
@@ -133,7 +151,13 @@
 
   function render() {
     const m = ST.model;
-    if (!m) { fill(main, h('div', { class: 'loading', text: ST.error ? 'Could not load: ' + ST.error : 'Loading' })); return; }
+    if (!m) {
+      fill(main, ST.error
+        ? h('div', { class: 'loadview' }, h('div', { class: 'ltext', text: 'Basis could not load your numbers' }), h('div', { class: 'lslow faint', text: ST.error }),
+          h('button', { class: 'btn', style: 'margin-top:12px', type: 'button', text: 'Try again', onclick: () => { ST.error = null; render(); load(true).then(render); } }))
+        : loadingView('Opening Basis', 'Working through your history. The first load after a start takes the longest; after that pages open at once.'));
+      return;
+    }
     const fn = { home, positions, options, income, analysis, risk, activity, settings, market, doom: doomPage, assets: assetsPage, customize: customizePage }[ST.page] || home;
     const page = h('div', { class: 'page' + (['market', 'analysis', 'income', 'options'].includes(ST.page) ? ' mid-w' : '') });
     fill(main, page);
@@ -524,6 +548,8 @@
             ` on ${mg.account} (estimate, buffer ${money(mg.excess, 0)}). `, h('a', { href: '/risk', text: 'Margin details' }))));
       }
     }
+    if ((m.snap_loading || []).length) out.push(h('div', { class: 'alert' }, icon(WARN_ICON), h('div', {}, h('b', { text: 'SnapTrade is still gathering your history' }),
+      ` for ${m.snap_loading.join(', ')}. Until it is done those holdings show from today. Basis checks every few minutes and fills in the past by itself.`)));
     const gaps = (m.gaps || []).reduce((n, g) => n + (g.shares || []).length, 0);
     if (gaps) out.push(h('div', { class: 'alert' }, icon(WARN_ICON), h('div', {}, `${gaps} holding${gaps > 1 ? 's were' : ' was'} sold without a matching buy in the history. `, h('a', { href: '/settings', text: 'See Data and settings' }))));
     return out;
@@ -2181,6 +2207,8 @@
           W.opened && !linked.length ? h('p', { class: 'wwait' }, h('i'), 'Waiting for the link. Finish in your browser, then come back: this page notices by itself.') : null,
           st.error ? h('p', { class: 'down', style: 'font-size:13.5px', text: st.error }) : null,
           job.running ? h('p', { class: 'wwait' }, h('i'), job.step) : null,
+          job.running && job.waiting ? h('button', { class: 'btn small', type: 'button', text: 'Continue without waiting', onclick: async () => { await post('/api/first-run', { action: 'skip-wait' }); tick(); } }) : null,
+          job.running && job.waiting ? h('p', { class: 'faint', style: 'font-size:12.5px;margin:6px 0 0', text: 'If you go on now, the holdings SnapTrade has not finished show from today until it is done; Basis then fills in the past by itself.' }) : null,
           job.error && !job.running ? h('p', { class: 'down', style: 'font-size:13.5px', text: job.error }) : null,
           h('div', { class: 'cbtns', style: 'margin-top:12px' }, job.running ? null : connect,
             linked.length && !job.running ? h('button', { class: 'btn primary', type: 'button', text: job.error ? 'Try again' : 'Continue', onclick: async () => { await post('/api/first-run', { action: 'sync' }); tick(); } }) : null), msg);
@@ -2344,7 +2372,7 @@
     page.append(h('div', { class: 'head' }, h('div', {}, h('h1', { text: 'Doom dashboard' }),
       h('p', { class: 'sub', text: 'Doom cycles from start to peak to calm, and where the numbers say to buy the dip while one is on.' })),
       h('a', { class: 'more', href: '/market', text: 'Doom score details' })));
-    const body = h('div', {}, h('div', { class: 'loading', text: 'Loading' }));
+    const body = h('div', {}, loadingView('Reading the doom cycle, your margin and the dip analysis'));
     page.append(body);
     if (!ST.dip || Date.now() - ST.dip.at > 120e3) {
       const d = await api('/api/dip').catch((e) => ({ error: e.message }));
@@ -2641,7 +2669,7 @@
     page.append(doomBox);
     doomSection(doomBox);
     page.append(h('h2', { class: 'section-title', text: 'Valuation' }), h('p', { class: 'sub', text: 'Price divided by earnings for the S&P 500 and the Nasdaq-100, and the Shiller P/E, which uses ten years of earnings so one bad year cannot distort it.' }));
-    const body = h('div', {}, h('div', { class: 'loading', text: 'Loading' }));
+    const body = h('div', {}, loadingView('Reading market valuations'));
     page.append(body);
     const mk = ST.market || (ST.market = await api('/api/market').catch((e) => ({ error: e.message })));
     if (ST.page !== 'market') return;
@@ -2803,7 +2831,7 @@
 
   async function settings(page, m) {
     page.append(h('h1', { text: 'Data and settings' }), h('p', { class: 'sub', text: 'Uploads, accounts, the holdings your files could not see, and your rules.' }));
-    const holder = h('div', {}, h('div', { class: 'loading', text: 'Loading' }));
+    const holder = h('div', {}, loadingView('Reading your data and settings'));
     page.append(holder);
     const sd = await api('/api/setup').catch((e) => ({ error: e.message }));
     if (ST.page !== 'settings') return;
@@ -3114,5 +3142,6 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { load().then(() => { if (sheet.hidden && ['home', 'positions'].includes(ST.page)) render(); }); } schedule(); });
   let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (sheet.hidden && !['settings', 'activity', 'customize'].includes(ST.page)) render(); }, 200); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  render();                                          // the loading screen until the first numbers arrive
   load().then(() => { go(location.pathname, false); schedule(); });
 })();

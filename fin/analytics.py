@@ -49,16 +49,25 @@ class Prices:
 
     def __init__(self, db, symbols):
         self.bars, self.splits = {}, defaultdict(list)
-        syms = sorted(set(symbols))
-        for s in syms:
-            rows = db.q('SELECT d, close, adj FROM prices WHERE symbol=? ORDER BY d', (s,))
-            if rows:
-                self.bars[s] = ([r['d'] for r in rows], [r['close'] for r in rows], [r['adj'] for r in rows])
+        self.load(db, symbols)
         for r in db.q('SELECT symbol, d, ratio FROM splits ORDER BY d'):
             self.splits[r['symbol']].append((r['d'], r['ratio']))
         self.trade_px = defaultdict(list)
         self.split_list = {k: list(v) for k, v in self.splits.items()}
         self.live, self.live_day = {}, None
+
+    def load(self, db, symbols):
+        """Read the daily bars of symbols not loaded yet (one query per hundred symbols)."""
+        syms = sorted(set(s for s in symbols if s and s not in self.bars))
+        for i in range(0, len(syms), 100):
+            part = syms[i:i + 100]
+            got = defaultdict(lambda: ([], [], []))
+            for sym, d, close, adj in db.tuples(f"SELECT symbol, d, close, adj FROM prices WHERE symbol IN ({','.join('?' * len(part))}) ORDER BY symbol, d", part):
+                b = got[sym]
+                b[0].append(d)
+                b[1].append(close)
+                b[2].append(adj)
+            self.bars.update(got)
 
     def set_live(self, prices, day):
         """Today's moves (shares from the broker's counts before the rows arrive) are valued at live prices."""
@@ -248,7 +257,9 @@ def leverage(name):
 
 
 # ---- main ----------------------------------------------------------------------------------------------------------
-def build(db, quotes, today=None):
+def build(db, quotes, today=None, pending=True):
+    """The whole model. pending=False leaves out the share counts the broker shows that the activity rows do not
+    explain yet (_pending): the first matching with a broker compares against the rows alone."""
     today = today or date.today().isoformat()
     accounts = db.q('SELECT * FROM accounts ORDER BY sort, id')
     for a in accounts:
@@ -283,8 +294,9 @@ def build(db, quotes, today=None):
             basis[(b['symbol'], b['d'])] = b['cost']
         opening = db.q('SELECT symbol, qty, cost, as_of AS date FROM opening WHERE account_id=?', (a['id'],))
         rp = _replay_reconciled(db, a, evs, opening, basis, prices, quotes, today)
-        pend, pbasis = _pending(db, a, rp, prices, quotes, today)
+        pend, pbasis = _pending(db, a, rp, prices, quotes, today) if pending else ([], {})
         if pend:
+            prices.load(db, {e['symbol'] for e in pend})       # their price history too, for charts and correlations
             evs = evs + pend
             basis.update(pbasis)
             all_syms |= {e['symbol'] for e in pend}

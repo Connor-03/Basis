@@ -369,12 +369,13 @@ def map_account(db, sa, inst):
 
 
 _SYNC = threading.Lock()          # one sync at a time: the first sync and the background loop can both start one
-HISTORY_CHECKED = 'snap_history_checked'
+HISTORY_CHECKED = 'snap_history_checked_2'      # _2 (1.0.3): read again after SnapTrade finished loading
 
 
 def sync(db, log=print, days_back=None):
-    """Read every linked account. Returns {'accounts', 'activities', 'new_rows', 'errors', 'refilled'}: refilled lists
-    the accounts whose older history was missing and has been read again (see below)."""
+    """Read every linked account. Returns {'accounts', 'activities', 'new_rows', 'errors', 'refilled', 'loading',
+    'rechecked'}: refilled lists the accounts whose older history was missing and has been read again; loading names
+    the accounts SnapTrade is still gathering history for; rechecked is True after a full pass over every account."""
     with _SYNC:
         return _sync(db, log, days_back)
 
@@ -383,11 +384,12 @@ def _sync(db, log, days_back):
     cl = Client()
     cl.ensure_user()
     conf = cl.c
-    summary = {'accounts': 0, 'activities': 0, 'new_rows': 0, 'errors': [], 'refilled': []}
+    summary = {'accounts': 0, 'activities': 0, 'new_rows': 0, 'errors': [], 'refilled': [], 'loading': [], 'rechecked': False}
     today = date.today().isoformat()
     # SnapTrade lists activities newest first. Before 1.0.2 a first sync cut short could keep an account's newest rows
-    # without the older ones, and every later sync only looked back a week from the newest row, so the gap stayed. A
-    # desktop copy reads every account's whole history once more to close any such gap.
+    # without the older ones, and every later sync only looked back a week from the newest row, so the gap stayed; and
+    # before 1.0.3 a first sync could run while SnapTrade was still gathering a new connection's history. A desktop
+    # copy reads every account's whole history once more to close any such gap.
     full = paths.MODE == 'desktop' and not db.setting(HISTORY_CHECKED)
     conns = {c.get('id'): c for c in cl.connections()}
     for sa in cl.accounts():
@@ -404,6 +406,10 @@ def _sync(db, log, days_back):
               json.dumps({k: sa.get(k) for k in ('raw_type', 'cash_or_margin', 'status', 'sync_status', 'net_value')})))
         aid = db.one('SELECT account_id FROM snap_accounts WHERE snap_id=?', (sa['id'],))['account_id']
         summary['accounts'] += 1
+        # a connection made minutes ago: SnapTrade lists the holdings at once but gathers the history over a while
+        loading = (((sa.get('sync_status') or {}).get('transactions') or {}).get('initial_sync_completed') is False)
+        if loading:
+            summary['loading'].append(f"{inst} {sa.get('display_name') or sa.get('name') or ''}".strip())
         try:
             bal = cl.balances(sa['id'])
             allpos = cl.positions(sa['id'])
@@ -426,7 +432,7 @@ def _sync(db, log, days_back):
             # else from the start
             had = db.one("SELECT COUNT(*) AS n, MAX(activity_date) AS d FROM raw_rows WHERE account_id=? AND fp LIKE 'snap:%'", (aid,))
             finished = (db.one('SELECT synced_at FROM snap_accounts WHERE snap_id=?', (sa['id'],)) or {}).get('synced_at')
-            if had['d'] and finished and not full:
+            if had['d'] and finished and not full and not loading:
                 start = (date.fromisoformat(had['d']) - timedelta(days=7)).isoformat()
             else:
                 start = (date.today() - timedelta(days=days_back or 3650)).isoformat()
@@ -443,17 +449,30 @@ def _sync(db, log, days_back):
             summary['new_rows'] += added
             if full and had['n'] and added:
                 summary['refilled'].append(aid)
-            db.x('UPDATE snap_accounts SET synced_at=?, last_error=NULL WHERE snap_id=?', (datetime.now().isoformat(timespec='seconds'), sa['id']))
+            if loading:                         # not finished: the next sync reads its whole history again
+                db.x('UPDATE snap_accounts SET synced_at=NULL, last_error=NULL WHERE snap_id=?', (sa['id'],))
+            else:
+                db.x('UPDATE snap_accounts SET synced_at=?, last_error=NULL WHERE snap_id=?', (datetime.now().isoformat(timespec='seconds'), sa['id']))
         except SnapError as e:
             summary['errors'].append(f"{sa.get('institution_name')} {sa.get('name')}: {e}")
             db.x('UPDATE snap_accounts SET last_error=? WHERE snap_id=?', (str(e)[:300], sa['id']))
-    if full and not summary['errors']:
+    if full and not summary['errors'] and not summary['loading']:
         db.set_setting(HISTORY_CHECKED, datetime.now().isoformat(timespec='seconds'))
+        summary['rechecked'] = True
     conf['last_sync'] = datetime.now().isoformat(timespec='seconds')
     conf['last_error'] = '; '.join(summary['errors'])[:300] or None
     save(conf)
     db.log('snaptrade sync', summary)
     return summary
+
+
+def still_loading(db, account_id):
+    """True while SnapTrade says it has not finished gathering this account's history."""
+    for r in db.q('SELECT meta FROM snap_accounts WHERE account_id=?', (account_id,)):
+        st = ((json.loads(r['meta'] or '{}').get('sync_status') or {}).get('transactions') or {})
+        if st.get('initial_sync_completed') is False:
+            return True
+    return False
 
 
 def broker_positions(db, account_id):
