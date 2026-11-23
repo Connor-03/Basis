@@ -179,13 +179,14 @@ def worker():
                     STATE['intra_at_' + rng] = now
                     build_intraday(rng)
             st = snaptrade.public_state()
-            if st['registered'] and db.one('SELECT snap_id FROM snap_accounts LIMIT 1') and \
+            if st['registered'] and not JOB['running'] and db.one('SELECT snap_id FROM snap_accounts LIMIT 1') and \
                     now - STATE.get('snap_at', 0) > (3600 if session == 'regular' else 6 * 3600):
                 STATE['snap_at'] = now
                 try:
                     res = snaptrade.sync(db, log=log)
                     if res['new_rows'] or res['accounts']:
                         bump()
+                    rematch(res['refilled'])
                     reconcile_new()
                 except Exception as e:
                     log('snaptrade sync:', e)
@@ -405,6 +406,23 @@ def reconcile_new():
     return changes
 
 
+def rematch(accounts):
+    """Accounts whose older history was missing and has just been read again (fin/snaptrade.py): their share counts
+    were matched against part of the history, so that matching would now count shares twice. Undo it and let
+    reconcile_new() run it again on the whole history."""
+    if not accounts:
+        return
+    done = set(db.setting('snap_reconciled', None) or [])
+    for aid in set(accounts):
+        db.x("DELETE FROM opening WHERE account_id=? AND (note LIKE '%to match the broker (SnapTrade)%' OR note LIKE 'inferred: sold before any buy%')", (aid,))
+        db.x("DELETE FROM adjustments WHERE account_id=? AND note LIKE '%to match the broker (SnapTrade)%'", (aid,))
+        done -= {r['snap_id'] for r in db.q('SELECT snap_id FROM snap_accounts WHERE account_id=?', (aid,))}
+    db.set_setting('snap_reconciled', sorted(done))
+    db.log('history refilled', {'accounts': sorted(set(accounts))})
+    log('history refilled for accounts', sorted(set(accounts)), '- matching share counts again')
+    bump()
+
+
 def first_sync():
     """After a brokerage is linked: read it, fetch the price history its holdings need, match share counts."""
     if JOB['running']:
@@ -417,11 +435,13 @@ def first_sync():
             if not res['accounts']:
                 raise ValueError('SnapTrade has no accounts to show yet. A broker can take a few minutes after it is linked. Try again shortly.')
             STATE['snap_at'] = time.time()
+            rematch(res['refilled'])
             bump()
             JOB['step'] = 'Downloading price history for your holdings'
             m, all_syms, live = needed_symbols()
             first = min((a['first_date'] for a in m['accounts'] if a.get('first_date')), default=date.today().isoformat())
-            sync.history(db, all_syms, (date.fromisoformat(first) - timedelta(days=45)).isoformat(), log=log)
+            sync.history(db, all_syms, (date.fromisoformat(first) - timedelta(days=45)).isoformat(), log=log,
+                         progress=lambda i, n: JOB.update(step=f'Downloading price history for your holdings ({i} of {n})'))
             bump()
             JOB['step'] = 'Matching share counts with your broker'
             reconcile_new()
@@ -438,9 +458,13 @@ def first_sync():
             JOB['done'] = True
             if res['errors']:
                 JOB['error'] = 'Some accounts could not be read: ' + '; '.join(res['errors'])[:300]
-        except Exception as e:
+        except ValueError as e:
             log('first sync:', e)
             JOB['error'] = str(e)[:400]
+        except Exception as e:
+            log('first sync:', e)
+            traceback.print_exc()
+            JOB['error'] = f'Something went wrong while reading your accounts: {str(e)[:300]}. Press Try again: it picks up where it stopped.'
         finally:
             JOB['running'] = False
     threading.Thread(target=work, daemon=True).start()
@@ -1111,6 +1135,7 @@ def post_action(p, b):
         except snaptrade.SnapError as e:
             raise ValueError(str(e))
         STATE['snap_at'] = time.time()
+        rematch(res['refilled'])
         done = set(db.setting('snap_reconciled', None) or [])
         if any(r['snap_id'] not in done for r in db.q('SELECT snap_id FROM snap_accounts WHERE account_id IS NOT NULL')):
             first_sync()                                  # a brokerage linked just now: fetch its history and match its counts

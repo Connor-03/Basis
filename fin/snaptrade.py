@@ -19,6 +19,7 @@ import hashlib
 import hmac
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -367,12 +368,27 @@ def map_account(db, sa, inst):
     return db.x('INSERT INTO accounts(name, broker, kind, margin, sort) VALUES(?,?,?,?,?)', (full[:60], broker, kind, margin, 5))
 
 
+_SYNC = threading.Lock()          # one sync at a time: the first sync and the background loop can both start one
+HISTORY_CHECKED = 'snap_history_checked'
+
+
 def sync(db, log=print, days_back=None):
+    """Read every linked account. Returns {'accounts', 'activities', 'new_rows', 'errors', 'refilled'}: refilled lists
+    the accounts whose older history was missing and has been read again (see below)."""
+    with _SYNC:
+        return _sync(db, log, days_back)
+
+
+def _sync(db, log, days_back):
     cl = Client()
     cl.ensure_user()
     conf = cl.c
-    summary = {'accounts': 0, 'activities': 0, 'new_rows': 0, 'errors': []}
+    summary = {'accounts': 0, 'activities': 0, 'new_rows': 0, 'errors': [], 'refilled': []}
     today = date.today().isoformat()
+    # SnapTrade lists activities newest first. Before 1.0.2 a first sync cut short could keep an account's newest rows
+    # without the older ones, and every later sync only looked back a week from the newest row, so the gap stayed. A
+    # desktop copy reads every account's whole history once more to close any such gap.
+    full = paths.MODE == 'desktop' and not db.setting(HISTORY_CHECKED)
     conns = {c.get('id'): c for c in cl.connections()}
     for sa in cl.accounts():
         conn = conns.get(sa.get('connection_id')) or {}
@@ -406,28 +422,33 @@ def sync(db, log=print, days_back=None):
                 db.x("DELETE FROM balances WHERE account_id=? AND note LIKE 'SnapTrade%'", (aid,))
                 db.x('INSERT INTO balances(account_id, d, kind, value, note) VALUES(?,?,?,?,?)',
                      (aid, today, 'cash', cash, 'SnapTrade sync'))
-            # activities: from the newest stored SnapTrade row (minus a week) or from the start
-            last = db.one("SELECT MAX(activity_date) AS d FROM raw_rows WHERE account_id=? AND fp LIKE 'snap:%'", (aid,))['d']
-            start = (date.fromisoformat(last) - timedelta(days=7)).isoformat() if last else \
-                (date.today() - timedelta(days=days_back or 3650)).isoformat()
+            # activities: from the newest stored SnapTrade row (minus a week) once a sync of this account has finished,
+            # else from the start
+            had = db.one("SELECT COUNT(*) AS n, MAX(activity_date) AS d FROM raw_rows WHERE account_id=? AND fp LIKE 'snap:%'", (aid,))
+            finished = (db.one('SELECT synced_at FROM snap_accounts WHERE snap_id=?', (sa['id'],)) or {}).get('synced_at')
+            if had['d'] and finished and not full:
+                start = (date.fromisoformat(had['d']) - timedelta(days=7)).isoformat()
+            else:
+                start = (date.today() - timedelta(days=days_back or 3650)).isoformat()
             acts = cl.activities(sa['id'], start, today)
             summary['activities'] += len(acts)
             imp = db.x('INSERT INTO imports(account_id, filename, broker, rows_total, rows_added, first_date, last_date) '
                        'VALUES(?,?,?,?,?,?,?)', (aid, 'SnapTrade sync', 'snaptrade', len(acts), 0, start, today))
-            added = 0
-            for i, a in enumerate(acts):
-                if not a.get('id'):
-                    continue
-                d = _d(a.get('trade_date')) or _d(a.get('settlement_date')) or today
-                added += db.c.execute('INSERT OR IGNORE INTO raw_rows(account_id, import_id, pos, fp, occ, activity_date, data) '
-                                      'VALUES(?,?,?,?,?,?,?)', (aid, imp, i, 'snap:' + str(a['id']), 1, d,
-                                                                json.dumps({'_src': 'snaptrade', **a}))).rowcount
-            db.x('UPDATE imports SET rows_added=? WHERE id=?', (added, imp))
+            rows = [(aid, imp, i, 'snap:' + str(a['id']), 1, _d(a.get('trade_date')) or _d(a.get('settlement_date')) or today,
+                     json.dumps({'_src': 'snaptrade', **a})) for i, a in enumerate(acts) if a.get('id')]
+            with db.tx() as c:                  # all of an account's rows in one locked transaction, or none of them
+                added = c.executemany('INSERT OR IGNORE INTO raw_rows(account_id, import_id, pos, fp, occ, activity_date, data) '
+                                      'VALUES(?,?,?,?,?,?,?)', rows).rowcount
+                c.execute('UPDATE imports SET rows_added=? WHERE id=?', (added, imp))
             summary['new_rows'] += added
+            if full and had['n'] and added:
+                summary['refilled'].append(aid)
             db.x('UPDATE snap_accounts SET synced_at=?, last_error=NULL WHERE snap_id=?', (datetime.now().isoformat(timespec='seconds'), sa['id']))
         except SnapError as e:
             summary['errors'].append(f"{sa.get('institution_name')} {sa.get('name')}: {e}")
             db.x('UPDATE snap_accounts SET last_error=? WHERE snap_id=?', (str(e)[:300], sa['id']))
+    if full and not summary['errors']:
+        db.set_setting(HISTORY_CHECKED, datetime.now().isoformat(timespec='seconds'))
     conf['last_sync'] = datetime.now().isoformat(timespec='seconds')
     conf['last_error'] = '; '.join(summary['errors'])[:300] or None
     save(conf)

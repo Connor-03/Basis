@@ -2146,7 +2146,7 @@
       if (keys) s1 = stepCard(1, 3, 'Your SnapTrade key', 'done', h('p', { class: 'dim', text: `Saved (ending ${st.key_tail}).` }),
         !synced ? h('button', { class: 'linkish', type: 'button', text: 'Use a different key', onclick: () => { W.editKeys = true; tick(); } }) : null);
       else {
-        const cid = h('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Client ID' }), key = h('input', { type: 'password', autocomplete: 'off', 'aria-label': 'Consumer key' });
+        const cid = h('input', { type: 'text', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Client ID' }), key = h('input', { type: 'password', autocomplete: 'off', 'aria-label': 'Consumer Key' });
         cid.value = W.cid || ''; key.value = W.key || '';
         cid.addEventListener('input', () => { W.cid = cid.value; }); key.addEventListener('input', () => { W.key = key.value; });
         s1 = stepCard(1, 3, 'Get a SnapTrade key', 'now',
@@ -2154,14 +2154,15 @@
           h('ol', { class: 'wlist' },
             h('li', {}, 'Create a Personal account in the SnapTrade dashboard and verify your email. ', h('button', { class: 'btn small', type: 'button', text: 'Open SnapTrade', onclick: () => openLink('https://dashboard.snaptrade.com/signup') })),
             h('li', { text: 'Turn on two-factor authentication there.' }),
-            h('li', {}, 'Create a Personal API key on its API Key page. ', h('button', { class: 'btn small', type: 'button', text: 'Open the API Key page', onclick: () => openLink('https://dashboard.snaptrade.com/api-key') })),
-            h('li', { text: 'Paste the client ID and the consumer key here.' })),
-          h('div', { class: 'form' }, h('label', { class: 'f' }, 'Client ID', cid), h('label', { class: 'f' }, 'Consumer key', key),
+            h('li', {}, 'In the dashboard’s left menu, open ', h('b', { text: 'Build' }), ', then ', h('b', { text: 'API Keys' }), '. ', h('button', { class: 'btn small', type: 'button', text: 'Open API Keys', onclick: () => openLink('https://dashboard.snaptrade.com/api-key') })),
+            h('li', {}, 'Copy the ', h('b', { text: 'Client ID' }), ' (it starts with PERS-) and the ', h('b', { text: 'Consumer Key' }), '. The Consumer Key is hidden: copy it with the button at the end of its box, or press the eye to show it.'),
+            h('li', { text: 'Paste both below and press Save the key.' })),
+          h('div', { class: 'form' }, h('label', { class: 'f' }, 'Client ID', cid), h('label', { class: 'f' }, 'Consumer Key', key),
             h('div', {}, h('button', { class: 'btn primary', type: 'button', text: 'Save the key', onclick: async () => {
               if (await post('/api/snaptrade/keys', { client_id: cid.value, consumer_key: key.value })) { W.editKeys = false; W.key = ''; }
               tick();
             } }))),
-          h('p', { class: 'faint', style: 'font-size:12.5px;margin:10px 0 0', text: 'The key is saved on this computer only (on Windows it is encrypted for your Windows account) and is sent nowhere except to SnapTrade.' }), msg);
+          h('p', { class: 'faint', style: 'font-size:12.5px;margin:10px 0 0', text: 'The key is saved on this computer only (on Windows it is encrypted for your Windows account) and is sent nowhere except to SnapTrade. One key can serve more than one copy of Basis: brokerages you linked with it before show up here as already linked.' }), msg);
       }
       // 2. a brokerage
       let s2;
@@ -2969,10 +2970,10 @@
     const after = async () => { ST.menu = null; await load(true); render(); };
     if (!d.has_keys || box.dataset.editKeys) {
       const cid = h('input', { type: 'text', placeholder: 'Client ID', autocomplete: 'off', value: d.client_id || '' });
-      const key = h('input', { type: 'password', placeholder: 'Consumer key', autocomplete: 'off' });
+      const key = h('input', { type: 'password', placeholder: 'Consumer Key', autocomplete: 'off' });
       fill(box, title,
-        h('p', { class: 'dim', style: 'font-size:13.5px;margin-top:0', text: 'Free for up to 20 connections, read-only. Create a Personal API key in the SnapTrade dashboard (dashboard.snaptrade.com/api-key) and paste both values here. They stay on this computer and are never shown again.' }),
-        h('div', { class: 'form' }, h('label', { class: 'f' }, 'Client ID', cid), h('label', { class: 'f' }, 'Consumer key', key),
+        h('p', { class: 'dim', style: 'font-size:13.5px;margin-top:0', text: 'Free for up to 20 connections, read-only. In the SnapTrade dashboard (dashboard.snaptrade.com) open Build, then API Keys, and copy the Client ID (it starts with PERS-) and the Consumer Key (hidden until you press the eye, or use its copy button). They stay on this computer and are never shown again.' }),
+        h('div', { class: 'form' }, h('label', { class: 'f' }, 'Client ID', cid), h('label', { class: 'f' }, 'Consumer Key', key),
           h('div', {}, h('button', { class: 'btn primary', text: 'Save keys', onclick: async () => {
             try { await api('/api/snaptrade/keys', { json: { client_id: cid.value, consumer_key: key.value } }); delete box.dataset.editKeys; again(); }
             catch (e) { msg.textContent = e.message; }

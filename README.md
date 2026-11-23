@@ -38,9 +38,11 @@ folder yourself.
 
 ## What you need
 
-- **A SnapTrade Personal key** (free, up to 20 brokerage connections). You create it in the
-  [SnapTrade dashboard](https://dashboard.snaptrade.com/api-key) and paste it into Basis once. Basis asks SnapTrade
-  for read-only access: it cannot trade or move money. Read the note on SnapTrade's terms under Limits below.
+- **A SnapTrade Personal key** (free, up to 20 brokerage connections). In the
+  [SnapTrade dashboard](https://dashboard.snaptrade.com/api-key) it is under Build, then API Keys: copy the Client ID
+  (it starts with PERS-) and the Consumer Key, and paste them into Basis once. One key can serve more than one copy of
+  Basis. Basis asks SnapTrade for read-only access: it cannot trade or move money. Read the note on SnapTrade's terms
+  under Limits below.
 - **At least one brokerage linked through SnapTrade.** Without one there is nothing to show.
 - **Optional: Claude Code**, for the Customize page.
 

@@ -13,10 +13,14 @@ def _today():
     return date.today().isoformat()
 
 
-def history(db, symbols, start, force=False, log=print):
-    """Fetch or extend daily bars. Re-reads the last 10 days each time so late corrections land."""
+def history(db, symbols, start, force=False, log=print, progress=None):
+    """Fetch or extend daily bars. Re-reads the last 10 days each time so late corrections land. progress(i, n) is
+    called before each symbol."""
     done = 0
-    for s in symbols:
+    symbols = list(symbols)
+    for i, s in enumerate(symbols):
+        if progress:
+            progress(i + 1, len(symbols))
         row = db.one('SELECT history_at, history_from, failed FROM symbols WHERE symbol=?', (s,))
         if row and not force:
             if row['history_at'] and row['history_at'][:10] == _today() and (row['history_from'] or '9') <= start:
