@@ -125,7 +125,11 @@
   }
   function pausedNote(m) {
     const feed = priceFeed(m);
-    return feed.live ? null : h('button', { type: 'button', class: 'paused inline', 'data-help': 'Live prices', 'aria-expanded': 'false' }, h('i'), feed.text === 'Prices paused' ? 'Not live: stock prices hold at 8 PM ET until 4 AM' : 'Not live: prices are late');
+    if (feed.live) return null;
+    const et = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })), wd = et.getDay();
+    const weekend = wd === 6 || wd === 0 || (wd === 5 && et.getHours() >= 20);
+    return h('button', { type: 'button', class: 'paused inline', 'data-help': 'Live prices', 'aria-expanded': 'false' }, h('i'),
+      feed.text === 'Prices paused' ? `Not live until ${weekend ? 'Monday ' : ''}4 AM ET` : 'Not live: prices are late');
   }
   function syncInfo() {
     const m = ST.model; if (!m) return;
