@@ -3014,7 +3014,7 @@
   }
 
   async function settings(page, m) {
-    page.append(h('h1', { text: 'Data and settings' }), h('p', { class: 'sub', text: 'Uploads, accounts, the holdings your files could not see, and your rules.' }));
+    page.append(h('h1', { text: 'Data and settings' }), h('p', { class: 'sub', text: 'Your settings first, then your accounts, then the data Basis works from.' }));
     const holder = h('div', {}, loadingView('Reading your data and settings'));
     page.append(holder);
     const sd = await api('/api/setup').catch((e) => ({ error: e.message }));
@@ -3022,10 +3022,19 @@
     if (sd.error) { fill(holder, h('div', { class: 'alert bad', text: sd.error })); return; }
     const acctOpts = (sel) => sd.accounts.map((a) => h('option', { value: a.id, text: a.name, selected: a.id === sel }));
     const refresh = async () => { ST.menu = null; await load(true); render(); };
+    // a long list shows its first rows until opened
+    const capped = (rows, n, make, what) => {
+      const box = h('div', {});
+      const show = (all) => fill(box, make(all ? rows : rows.slice(0, n)), rows.length > n
+        ? h('button', { class: 'btn small morerows', text: all ? 'Show fewer' : `Show all ${rows.length} ${what}`, onclick: () => show(!all) }) : null);
+      show(false);
+      return box;
+    };
 
     // upload
     const acctSel = h('select', {}, acctOpts(sd.accounts[0] && sd.accounts[0].id));
     const file = h('input', { type: 'file', accept: '.csv,text/csv', hidden: true });
+    const files = sd.imports.filter((i) => i.broker !== 'snaptrade'), syncs = sd.imports.length - files.length;
     const result = h('div', { class: 'result' });
     const drop = h('div', { class: 'drop' }, h('div', { text: 'Drop a CSV here or ' }, h('button', { class: 'linkish', text: 'choose a file', onclick: () => file.click() })),
       h('div', { class: 'faint', style: 'font-size:12.5px;margin-top:6px', text: 'Robinhood: Account, Reports and statements, Reports, Account activity (pick the widest date range). Fidelity and Schwab: a positions CSV works today.' }));
@@ -3046,19 +3055,21 @@
     drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); send(e.dataTransfer.files[0]); });
     const up = card('Upload a statement', h('div', { class: 'form' }, h('label', { class: 'f' }, 'Account', acctSel), drop, file, result),
       h('h3', { text: 'Uploads', style: 'margin-top:18px' }),
-      table([{ label: 'When', get: (i) => shortDate((i.created || '').slice(0, 10)) }, { label: 'File', get: (i) => h('span', { class: 'dim', text: i.filename }) },
+      files.length ? capped(files, 6, (rows) => table([{ label: 'When', get: (i) => shortDate((i.created || '').slice(0, 10)) }, { label: 'File', get: (i) => h('span', { class: 'dim', text: i.filename }) },
         { label: 'Covers', m: true, get: (i) => `${shortDate(i.first_date)} to ${shortDate(i.last_date)}` }, { label: 'Added', r: true, get: (i) => (i.undone ? 'undone' : `${i.rows_added} of ${i.rows_total}`) },
-        { label: '', r: true, get: (i) => (i.undone ? '' : h('button', { class: 'btn small danger', text: 'Undo', onclick: async () => { if (confirm(`Remove the ${i.rows_added} rows this upload added?`)) { await api('/api/import/undo', { json: { id: i.id } }); await refresh(); } } })) }], sd.imports));
+        { label: '', r: true, get: (i) => (i.undone ? '' : h('button', { class: 'btn small danger', text: 'Undo', onclick: async () => { if (confirm(`Remove the ${i.rows_added} rows this upload added?`)) { await api('/api/import/undo', { json: { id: i.id } }); await refresh(); } } })) }], rows), 'uploads')
+        : h('p', { class: 'faint', style: 'font-size:13px;margin:0', text: 'No files uploaded yet.' }),
+      syncs ? h('p', { class: 'note', text: `Linked brokerages sync on their own (${syncs.toLocaleString('en-US')} times so far); those are not listed here.` }) : null);
 
     // data checks
     const gaps = m.gaps || [];
     const opening = sd.opening;
-    const openTable = table([
+    const openTable = capped(opening, 8, (rows) => table([
       { label: 'Holding', get: (o) => h('span', { class: 'sym', text: o.symbol }) },
       { label: 'Shares', r: true, get: (o) => qty(o.qty) },
       { label: 'Cost', r: true, get: (o) => (isNum(o.cost) ? money(o.cost, 0) : h('span', { class: 'faint', text: 'unknown' })) },
       { label: 'Why', m: true, get: (o) => h('span', { class: 'dim', style: 'font-size:12.5px', text: o.note }) },
-      { label: '', r: true, get: (o) => h('button', { class: 'btn small', text: 'Edit', onclick: () => editOpening(o) }) }], opening);
+      { label: '', r: true, get: (o) => h('button', { class: 'btn small', text: 'Edit', onclick: () => editOpening(o) }) }], rows), 'holdings');
     function editOpening(o) {
       const q = prompt(`Shares of ${o.symbol} held before ${shortDate(o.as_of)} (0 to remove)`, o.qty); if (q === null) return;
       if (+q === 0) { api('/api/opening/delete', { json: { id: o.id } }).then(refresh); return; }
@@ -3174,17 +3185,27 @@
       } }), tgMsg)));
 
     const connect = card('Linked brokerages (SnapTrade)', h('div', { class: 'loading', text: 'Loading' }));
-    const install = card('Put it on your iPhone', h('ol', { class: 'dim', style: 'font-size:13.5px;margin:0;padding-left:18px' },
-      h('li', { text: `Open ${(m.app && m.app.phone_url) || 'this copy’s https address'} in Safari.` }),
-      h('li', { text: 'Share, then Add to Home Screen.' }),
-      h('li', { text: 'It opens full screen like an app.' })));
-
     const phone = !m.app || m.app.alerts;                    // a copy served over https from a home server
+    // only a home-server copy with a phone address set (config.json, phone_url) can go on a phone; the desktop program never shows this
+    const install = phone && m.app && m.app.phone_url ? card('Put it on your phone', h('ol', { class: 'dim', style: 'font-size:13.5px;margin:0;padding-left:18px' },
+      h('li', { text: `Open ${m.app.phone_url} on your phone.` }),
+      h('li', { text: 'iPhone: in Safari, tap Share, then Add to Home Screen.' }),
+      h('li', { text: 'Android: in Chrome, open the menu, then Add to Home screen.' }),
+      h('li', { text: 'It opens full screen, like an app.' }))) : null;
     const notif = card('Phone alerts', h('div', { class: 'loading', text: 'Loading' }));
     const about = h('div', { class: 'card about' }, h('div', { class: 'loading', text: 'Loading' }));
-    fill(holder, h('div', { class: 'grid g2' }, up, checks), h('section', { class: 'block grid g2' }, accts, man),
-      h('section', { class: 'block grid g2' }, rules, h('div', { class: 'grid' }, phone ? notif : null, maint, types, connect, phone ? install : null)),
-      h('section', { class: 'block' }, about));
+
+    // settings first, then accounts, then the data behind them
+    const optCards = [rules];
+    const col = (...k) => h('div', { class: 'grid' }, ...k.filter(Boolean));
+    const sect = (id, title, ...kids) => h('section', { class: 'setsec', id: 'set-' + id }, title ? h('h2', { class: 'section-title', text: title }) : null, ...kids);
+    const jumps = h('nav', { class: 'chips setjump', 'aria-label': 'Sections' }, [['settings', 'Settings'], ['accounts', 'Accounts'], ['data', 'Your data'], ['about', 'About']].map(([k, l]) =>
+      h('button', { type: 'button', class: 'chip', text: l, onclick: () => { const el = document.getElementById('set-' + k); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } })));
+    fill(holder, jumps,
+      sect('settings', 'Settings', h('div', { class: 'grid g2' }, col(...optCards), col(phone ? notif : null, maint, types, install))),
+      sect('accounts', 'Accounts', h('div', { class: 'grid g2' }, accts, col(connect, man))),
+      sect('data', 'Your data', h('div', { class: 'grid g2' }, up, checks)),
+      sect('about', '', h('div', { class: 'block' }, about)));
     if (phone) notifCard(notif);
     snapCard(connect, sd);
     aboutCard(about);
