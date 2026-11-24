@@ -822,7 +822,7 @@
     const hs = m.history;
     const rows = openAccounts(m).sort((a, b) => b.equity - a.equity);
     const moving = (m.transit || []).filter((t) => t.status === 'in transit' && t.value > 0.5);
-    const pend = m.accounts.filter((a) => (a.pending || []).length);
+    const pend = m.accounts.filter((a) => (a.pending || []).length), off = m.hidden_accounts || [];
     const pendTxt = pend.map((a) => `${a.name} ${a.pending.slice(0, 5).map((x) => `${x.qty > 0 ? '+' : ''}${qty(x.qty)} ${x.symbol.replace('-USD', '')}`).join(', ')}${a.pending.length > 5 ? ` and ${a.pending.length - 5} more` : ''}`).join('; ');
     return panel('Accounts', ['/settings', 'Manage'], h('div', { class: 'rows' }, rows.map((a, i) => {
       const ser = (hs.accounts || []).find((x) => x.account === a.name);
@@ -833,7 +833,8 @@
     }), moving.map((t) => h('div', { class: 'row acct' }, h('div', { class: 'l' }, h('div', { class: 'aname', text: `On the way to ${t.to_name}` }), h('div', { class: 'faint', style: 'font-size:12px', text: `from ${t.from_name}, since ${shortDate(t.start)}${t.expected ? `, expected ${shortDate(t.expected)}` : ''}` })),
       h('span', {}), h('div', { class: 'r' }, h('div', { text: money(t.value, 0) }), h('div', { class: 'faint', style: 'font-size:12.5px', text: 'in transit' }))))),
     h('div', { style: 'margin-top:12px' }, segbar(rows.map((a) => ({ name: a.name, v: a.equity })), ACCT_COLORS)),
-    pend.length ? h('p', { class: 'faint', style: 'font-size:12px;margin:10px 0 0', text: `Taken from the brokers’ positions until the activity rows catch up (they arrive about a day later): ${pendTxt}.` }) : null);
+    pend.length ? h('p', { class: 'faint', style: 'font-size:12px;margin:10px 0 0', text: `Taken from the brokers’ positions until the activity rows catch up (they arrive about a day later): ${pendTxt}.` }) : null,
+    off.length ? h('p', { class: 'acoff', style: 'margin:12px 0 0' }, `Switched off, not counted anywhere: ${off.map((a) => a.name).join(', ')}. `, h('a', { href: '/settings', text: 'Change in Data and settings' })) : null);
   }
   function moversCard(m) {
     const movers = [...m.positions].sort((a, b) => Math.abs(b.day_change) - Math.abs(a.day_change)).slice(0, 7);
@@ -2510,11 +2511,14 @@
         (r.sold && r.sold.filled) || (r.bought && r.bought.filled) ? h('div', { class: 'faint', style: 'font-size:12px', text: 'Filled from your trades; edit the move to set exact numbers.' }) : null);
     } else if (mv.kind === 'transfer') {
       const st = r.status;
-      const txt = st === 'in transit' ? `${money(r.value, 0)} on the way to ${r.to_name}${r.symbols_waiting ? ` (${r.symbols_waiting} holding${r.symbols_waiting === 1 ? '' : 's'}${r.cash_waiting > 0.5 ? ' and cash' : ''})` : ''}. It stays in your net worth while it moves, and counts toward ${r.to_name}’s margin once it lands.`
+      const txt = r.from_off && r.to_off ? 'Both accounts are switched off, so Basis does not follow this transfer.'
+        : r.from_off ? `${r.from_name} is switched off, so Basis does not follow this transfer: what lands in ${r.to_name} counts as new money coming in.`
+        : r.to_off ? `${r.to_name} is switched off, so Basis does not follow this transfer: what leaves ${r.from_name} counts as money going out.`
+        : st === 'in transit' ? `${money(r.value, 0)} on the way to ${r.to_name}${r.symbols_waiting ? ` (${r.symbols_waiting} holding${r.symbols_waiting === 1 ? '' : 's'}${r.cash_waiting > 0.5 ? ' and cash' : ''})` : ''}. It stays in your net worth while it moves, and counts toward ${r.to_name}’s margin once it lands.`
         : st === 'arrived' ? `Arrived in ${r.to_name}${r.arrived_on ? ' on ' + longDate(r.arrived_on) : ''}.`
         : st === 'gone' ? `Left ${r.from_name} but never showed up in ${r.to_name} within 20 days.`
         : `Nothing has left ${r.from_name} yet${isNum(r.from_value) ? ` (${money(r.from_value, 0)} there now)` : ''}. Its holdings count as in transit from the day they leave until they land in ${r.to_name}, keeping their buy dates and cost.`;
-      res = h('div', {}, h('div', { text: `${r.from_name} to ${r.to_name}.${r.expected && st !== 'arrived' ? ` Expected to clear ${longDate(r.expected)}.` : ''}` }), h('div', { class: 'dim', text: txt }),
+      res = h('div', {}, h('div', { text: `${r.from_name} to ${r.to_name}.${r.expected && st !== 'arrived' && !r.from_off && !r.to_off ? ` Expected to clear ${longDate(r.expected)}.` : ''}` }), h('div', { class: 'dim', text: txt }),
         r.from_closed ? h('div', { class: 'faint', style: 'font-size:12px', text: `${r.from_name} reads zero and is off the dashboard.` }) : null);
     }
     const kindTag = { sell: 'Sold', buy: 'Bought', swap: 'Swap', transfer: 'Transfer', note: 'Note' }[mv.kind] || 'Note';
@@ -2539,7 +2543,7 @@
       p: h('input', { type: 'number', step: 'any', value: x && isNum(x.price) && !x.filled ? x.price : '', placeholder: 'Price (blank: from trades)', style: 'width:180px' }) });
     const sold = legIn(data.sold), bought = legIn(data.bought);
     const accts = (d.accounts || []);
-    const acctSel = (sel) => h('select', {}, h('option', { value: '', text: 'Pick an account' }), accts.map((a) => h('option', { value: a.id, text: a.name + (a.closed ? ' (closed)' : ''), selected: a.id === sel })));
+    const acctSel = (sel) => h('select', {}, h('option', { value: '', text: 'Pick an account' }), accts.map((a) => h('option', { value: a.id, text: a.name + (a.closed ? ' (closed)' : a.hidden ? ' (switched off)' : ''), selected: a.id === sel })));
     const from = acctSel(data.from), to = acctSel(data.to);
     const cash = h('input', { type: 'number', step: 'any', value: isNum(data.cash) ? data.cash : '', placeholder: 'Cash kept (blank: the difference)', style: 'width:230px' });
     const soldLine = h('div', { class: 'line' }, h('label', { class: 'f' }, 'Sold', sold.sym), sold.q, sold.p);
@@ -2897,9 +2901,23 @@
       } })),
       est.length ? h('p', { class: 'note', text: `${est.length} transferred-in lots use the market price on the transfer day as cost, because the broker did not send the original cost.` }) : null);
 
-    // accounts
-    const accts = card('Accounts', table([
-      { label: 'Name', get: (a) => a.name }, { label: 'Broker', get: (a) => a.broker }, { label: 'Type', get: (a) => a.kind },
+    // accounts, each with a switch that leaves it out of everything without touching its data
+    const acctSwitch = (a) => {
+      const on = !a.hidden;
+      return h('button', { type: 'button', class: 'acsw', role: 'switch', 'aria-checked': String(on), 'aria-label': `Count ${a.name} in Basis`,
+        title: on ? 'Counted everywhere. Click to leave it out.' : 'Left out of every page. Click to count it again.', onclick: async (e) => {
+          const b = e.currentTarget; b.disabled = true; b.setAttribute('aria-checked', String(!on)); b.lastChild.textContent = on ? 'Off' : 'On';
+          try { await api('/api/account/hide', { json: { id: a.id, hidden: on } }); await refresh(); }
+          catch (er) { b.disabled = false; b.setAttribute('aria-checked', String(on)); b.lastChild.textContent = on ? 'On' : 'Off'; alert(er.message); }
+        } }, h('i'), h('span', { text: on ? 'On' : 'Off' }));
+    };
+    const offCount = sd.accounts.filter((a) => a.hidden).length;
+    const accts = card('Accounts',
+      h('p', { class: 'dim', style: 'font-size:13.5px;margin-top:0', text: 'Switch an account off to leave it out of Basis entirely: net worth, charts, holdings, margin, income and the dashboards all work as if it did not exist. It keeps syncing, so switching it back on brings it back up to date.' }),
+      offCount ? h('p', { class: 'acoff', text: `${offCount} account${offCount === 1 ? ' is' : 's are'} switched off and not counted anywhere.` }) : null,
+      table([
+      { label: 'Counted', get: (a) => acctSwitch(a) },
+      { label: 'Name', cls: (a) => (a.hidden ? 'faint' : ''), get: (a) => a.name }, { label: 'Broker', m: true, get: (a) => a.broker }, { label: 'Type', m: true, get: (a) => a.kind },
       { label: 'Margin', get: (a) => (a.margin ? 'yes' : 'no') },
       { label: '', r: true, get: (a) => h('button', { class: 'btn small', text: 'Edit', onclick: () => {
         const name = prompt('Account name', a.name); if (!name) return; const margin = confirm('Is this a margin account? OK = yes, Cancel = no');
@@ -3020,7 +3038,7 @@
       e.target.disabled = false;
     } });
     const acctSel = (row) => h('select', { onchange: async (e) => { await api('/api/snaptrade/map', { json: { snap_id: row.snap_id, account_id: e.target.value } }); after(); } },
-      sd.accounts.map((a) => h('option', { value: a.id, text: a.name, selected: a.id === row.account_id })));
+      sd.accounts.map((a) => h('option', { value: a.id, text: a.name + (a.hidden ? ' (switched off)' : ''), selected: a.id === row.account_id })));
     const conns = [...new Set(d.linked.map((r) => r.authorization_id).filter(Boolean))];
     fill(box, title,
       h('p', { class: 'dim', style: 'font-size:13.5px;margin-top:0', text: `Key ending ${d.key_tail} saved. ` + (d.last_sync ? `Last sync ${d.last_sync.replace('T', ' ')}. Syncs every hour in market hours, every 6 hours otherwise. Transactions arrive a day late (SnapTrade refreshes them daily); balances and positions are live.` : 'Not synced yet.') }),

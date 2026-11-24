@@ -1,5 +1,14 @@
 # Changes
 
+## 1.0.4
+
+- Accounts can be switched off and on in Data and settings, under Accounts. A switched-off account is left out of
+  everything: net worth, history charts, holdings, margin and leverage, income, activity and the dashboards, as if it
+  did not exist. It keeps syncing, and share counts are still matched with the broker, so switching it back on brings
+  it back up to date with every number as before. The home page names any account that is off.
+- A logged transfer between your own accounts with one side switched off is not followed: what lands counts as money
+  coming in, and what leaves counts as money going out. The Moves list says so.
+
 ## 1.0.3
 
 - History for a brokerage linked just before the first sync: SnapTrade lists the holdings at once but gathers the

@@ -755,3 +755,18 @@ body.setup .content { padding-bottom: 40px; }
 .about .check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--body); }
 .credit { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--line-soft); font-size: 13.5px; color: var(--body); }
 .credit a { color: var(--link); text-underline-offset: 3px; }
+
+/* account on/off switch (Settings, Accounts) */
+.acsw { display: inline-flex; align-items: center; gap: 8px; min-height: 30px; padding: 3px 11px 3px 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--dim); font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.acsw i { position: relative; flex: none; width: 32px; height: 20px; border-radius: 999px; background: var(--bar-flat); }
+.acsw i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--faint); }
+.acsw span { min-width: 2.2em; }
+.acsw[aria-checked="true"] { border-color: var(--accent); color: var(--text); }
+.acsw[aria-checked="true"] i { background: var(--accent); }
+.acsw[aria-checked="true"] i::after { left: 15px; background: var(--accent-ink); }
+.acsw:hover { border-color: var(--line-hi); }
+.acsw[aria-checked="true"]:hover { border-color: var(--accent-hi); }
+.acsw:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+.acsw:disabled { opacity: 0.55; cursor: default; }
+.acoff { margin: 0 0 10px; padding: 9px 12px; border: 1px solid #5A4A1E; border-radius: 10px; background: rgba(255, 200, 69, 0.06); color: #E8C877; font-size: 13px; }
+.acoff a { color: var(--link); text-underline-offset: 3px; }

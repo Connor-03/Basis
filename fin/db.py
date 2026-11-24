@@ -69,7 +69,8 @@ class DB:
         self.c.execute('PRAGMA foreign_keys=ON')
         self.c.executescript(SCHEMA)
         cols = {r[1] for r in self.c.execute('PRAGMA table_info(accounts)')}
-        for col, decl in (('cash_note', "TEXT DEFAULT ''"), ('maint_scale', 'REAL'), ('maint_note', "TEXT DEFAULT ''")):
+        for col, decl in (('cash_note', "TEXT DEFAULT ''"), ('maint_scale', 'REAL'), ('maint_note', "TEXT DEFAULT ''"),
+                          ('hidden', 'INTEGER NOT NULL DEFAULT 0')):
             if col not in cols:
                 self.c.execute(f'ALTER TABLE accounts ADD COLUMN {col} {decl}')
         if new:

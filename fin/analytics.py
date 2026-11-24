@@ -257,11 +257,12 @@ def leverage(name):
 
 
 # ---- main ----------------------------------------------------------------------------------------------------------
-def build(db, quotes, today=None, pending=True):
+def build(db, quotes, today=None, pending=True, hidden=False):
     """The whole model. pending=False leaves out the share counts the broker shows that the activity rows do not
-    explain yet (_pending): the first matching with a broker compares against the rows alone."""
+    explain yet (_pending): the first matching with a broker compares against the rows alone. Accounts turned off in
+    Settings are left out as if they did not exist; hidden=True keeps them (matching with the broker needs every one)."""
     today = today or date.today().isoformat()
-    accounts = db.q('SELECT * FROM accounts ORDER BY sort, id')
+    accounts = db.q('SELECT * FROM accounts' + ('' if hidden else ' WHERE NOT hidden') + ' ORDER BY sort, id')
     for a in accounts:
         a['_balances'] = db.q('SELECT d, kind, value, note FROM balances WHERE account_id=? ORDER BY d', (a['id'],))
         sa = db.q('SELECT meta FROM snap_accounts WHERE account_id=?', (a['id'],))
@@ -463,6 +464,7 @@ def build(db, quotes, today=None, pending=True):
         'gaps': gaps, 'options': options, 'costs': costs, 'share_counts': shares, 'extended': extended, 'transit': transit,
         'symbols_needed': sorted(s for s in all_syms if s),
         'opening_count': sum(len(db.q('SELECT id FROM opening WHERE account_id=?', (a['id'],))) for a in accounts),
+        'hidden_accounts': [] if hidden else db.q('SELECT id, name FROM accounts WHERE hidden ORDER BY sort, id'),
     }
 
 

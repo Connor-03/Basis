@@ -421,7 +421,7 @@ def build_unmatched():
     """The model from the activity rows alone, without the broker's share counts standing in for rows that have not
     arrived (analytics._pending): what matching with the broker compares against."""
     bump()
-    return analytics.build(db, sync.cached_quotes(db), pending=False)
+    return analytics.build(db, sync.cached_quotes(db), pending=False, hidden=True)
 
 
 def after_sync(res):
@@ -804,7 +804,7 @@ def slim(m):
     out['app'] = {'mode': paths.MODE, 'version': paths.version(), 'ready': setup_done(), 'alerts': push.AVAILABLE,
                   'phone_url': CONFIG.get('phone_url')}
     # accounts SnapTrade is still gathering history for: their holdings show from today until it is done
-    out['snap_loading'] = [r['name'] for r in db.q('SELECT name, id FROM accounts WHERE id IN (SELECT account_id FROM snap_accounts)')
+    out['snap_loading'] = [r['name'] for r in db.q('SELECT name, id FROM accounts WHERE NOT hidden AND id IN (SELECT account_id FROM snap_accounts)')
                            if snaptrade.still_loading(db, r['id'])]
 
     return out
@@ -817,7 +817,7 @@ def activity(qs):
     limit = min(int(qs.get('limit') or 400), 3000)
     sql = ('SELECT r.id, r.account_id, r.import_id, r.fp, r.data, r.activity_date, a.name AS account '
            'FROM raw_rows r JOIN accounts a ON a.id=r.account_id')
-    where, args = [], []
+    where, args = ['NOT a.hidden'], []
     if acct:
         where.append('r.account_id=?')
         args.append(int(acct))
@@ -873,10 +873,12 @@ def symbol_detail(sym):
 def snap_state():
     st = snaptrade.public_state()
     linked = db.q('SELECT s.snap_id, s.account_id, s.institution, s.name, s.number, s.kind, s.synced_at, s.last_error, s.authorization_id, '
-                  'a.name AS console_name FROM snap_accounts s LEFT JOIN accounts a ON a.id=s.account_id ORDER BY s.institution')
+                  'a.name AS console_name, a.hidden FROM snap_accounts s LEFT JOIN accounts a ON a.id=s.account_id ORDER BY s.institution')
     m = model()
     diffs = []
     for row in linked:
+        if row['hidden']:
+            continue                    # turned off: the model leaves it out, so there is nothing to compare
         theirs, at = snaptrade.broker_positions(db, row['account_id'])
         if theirs is None:
             continue
@@ -935,6 +937,22 @@ def post_action(p, b):
                  (name, broker, kind, 1 if b.get('margin') else 0, 10))
         db.log('account added', name)
         return {'id': i}
+    if p == '/api/account/hide':
+        aid = int(b['id'])
+        acct = db.one('SELECT name FROM accounts WHERE id=?', (aid,))
+        if not acct:
+            raise ValueError('no such account')
+        hide = bool(b.get('hidden'))
+        db.x('UPDATE accounts SET hidden=? WHERE id=?', (1 if hide else 0, aid))
+        db.log('account turned off' if hide else 'account turned on', acct['name'])
+        if not hide:
+            STATE['held_seen'] = set()          # its holdings may have gone without new prices: read them all again
+        # the 1D and 1W charts are built from the holdings: build them again. The Live chart's points held the old
+        # total, so it starts over rather than show a step that never happened
+        STATE.pop('intra', None)
+        STATE['intra_at_1d'] = STATE['intra_at_5d'] = 0
+        db.x('DELETE FROM live_points')
+        return {'id': aid, 'hidden': hide}
     if p == '/api/account/delete':
         aid = int(b['id'])
         if db.one('SELECT id FROM raw_rows WHERE account_id=? LIMIT 1', (aid,)):
@@ -1235,7 +1253,8 @@ def post_action(p, b):
         acct = db.one('SELECT name FROM accounts WHERE id=?', (aid,))
         sym = (b.get('symbol') or '').strip().upper()
         theirs = _num(b.get('qty'), False)
-        m = model(force=True)
+        hidden = (db.one('SELECT hidden FROM accounts WHERE id=?', (aid,)) or {}).get('hidden')
+        m = analytics.build(db, sync.cached_quotes(db), hidden=True) if hidden else model(force=True)
         ours = 0.0
         for pos in m['positions']:
             if pos['symbol'] == sym:

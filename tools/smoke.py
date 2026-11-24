@@ -168,6 +168,20 @@ def main():
         ok('Bitcoin & Equivalents' in types and 'Crypto & Equivalents' in types, 'Bitcoin and crypto are grouped on their own')
         for p in ('/api/setup', '/api/snaptrade', '/api/agent', '/api/update', '/api/doom?brief=1', '/api/activity'):
             ok(call(p, timeout=120)[0] == 200, f'{p} answers')
+        # an account switched off is left out of everything, and comes back whole when switched on
+        cr = next(a for a in m['accounts'] if 'Crypto' in a['name'])
+        ok(call('/api/account/hide', {'id': cr['id'], 'hidden': True})[0] == 200, 'an account is switched off')
+        code, m2 = call('/api/model', timeout=90)
+        held = {x['id'] for p in m2.get('positions', []) for x in p['accounts']}
+        ok(code == 200 and len(m2['accounts']) == 2 and [a['id'] for a in m2['hidden_accounts']] == [cr['id']] and cr['id'] not in held,
+           'it is left out of the accounts and holdings')
+        acts = call('/api/activity?limit=3000')[1]['rows']
+        ok(bool(acts) and all(r['account'] != cr['name'] for r in acts), 'and out of the activity list')
+        ok(not call('/api/snaptrade')[1]['diffs'], 'the broker check shows no differences for it')
+        ok(call('/api/account/hide', {'id': cr['id'], 'hidden': False})[0] == 200, 'it is switched back on')
+        code, m3 = call('/api/model', timeout=90)
+        ok(code == 200 and len(m3['accounts']) == 3 and len(m3['positions']) == len(m['positions']) and not m3['hidden_accounts'],
+           'every account and holding is back')
         # an update, with a file the user changed
         with open(os.path.join(app, 'README.md'), 'a', encoding='utf-8') as f:
             f.write('\nmy own note\n')

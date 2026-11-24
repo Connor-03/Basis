@@ -58,6 +58,8 @@ folder yourself.
 - Market: S&P 500 and Nasdaq-100 valuation, M2, the Doom score and its history.
 - The Doom dashboard and the Assets dashboard.
 - A button that hides every dollar amount and leaves the percentages, for showing someone your screen.
+- A switch per account (Data and settings, Accounts) that leaves it out of every page as if it did not exist, while it
+  keeps syncing in the background.
 
 ## Your data
 

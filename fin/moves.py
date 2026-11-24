@@ -102,7 +102,7 @@ def summary(db, m, doom, quotes):
     rows = db.q('SELECT * FROM moves ORDER BY d DESC, id DESC')
     now = snapshot(m, doom, quotes, db)
     transit = {t['move_id']: t for t in m.get('transit') or []}
-    names = {a['id']: a['name'] for a in m['accounts']}
+    names = {a['id']: a['name'] for a in db.q('SELECT id, name FROM accounts')}     # a transfer may name a hidden account
     out = []
     for r in rows:
         data = json.loads(r['data'] or '{}')
@@ -134,6 +134,8 @@ def summary(db, m, doom, quotes):
             res = {'from': data.get('from'), 'to': data.get('to'), 'expected': data.get('expected'), 'from_name': names.get(data.get('from')),
                    'to_name': names.get(data.get('to')), **{k: t.get(k) for k in
                    ('status', 'value', 'left_value', 'symbols_left', 'symbols_waiting', 'cash_waiting', 'arrived_on')}}
+            off = {a['id'] for a in m.get('hidden_accounts') or []}
+            res['from_off'], res['to_off'] = data.get('from') in off, data.get('to') in off
             fa = next((a for a in m['accounts'] if a['id'] == data.get('from')), None)
             res['from_closed'] = bool(fa and fa.get('closed'))
             res['from_value'] = fa['equity'] if fa else None
@@ -143,7 +145,8 @@ def summary(db, m, doom, quotes):
                     'data': data, 'then': then, 'result': res,
                     'prices_now': {s: px(s) for s in syms}})
     return {'moves': out, 'now': now, 'accounts': [{'id': a['id'], 'name': a['name'], 'closed': bool(a.get('closed'))}
-                                                    for a in m['accounts']]}
+                                                    for a in m['accounts']] +
+            [{'id': a['id'], 'name': a['name'], 'hidden': True} for a in m.get('hidden_accounts') or []]}
 
 
 def save(db, m, doom, quotes, b):
