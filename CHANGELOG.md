@@ -1,5 +1,12 @@
 # Changes
 
+## 1.0.6
+
+- **Liquidation line.** On the Doom dashboard: how far the S&P 500 would have to fall before a margin call, and before the loan passes everything you hold, against every big crash since 1987.
+- **War chest.** Also on the Doom dashboard: cash plus the margin room you could safely use in a crash, and how fast it shrinks as prices fall. It leads the page when no doom cycle is on.
+- **Euphoria dashboard.** The Doom score's mirror: how hard greed is pushing prices up, today against past market tops and your own highs, and what came after. It's in the sidebar under Doom.
+- **Wealth rank.** A Home card with where your balance ranks among SnapTrade members, from SnapTrade's own figure. SnapTrade updates it once a month.
+
 ## 1.0.5
 
 - **Options dashboard.** The Options page is one dashboard now: open contracts, this week's menu, and every contract you've closed by month, by how it ended and by stock (that part moved over from Analysis).

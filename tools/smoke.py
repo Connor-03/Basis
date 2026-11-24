@@ -166,8 +166,10 @@ def main():
         ok(all(not a['gaps']['shares'] for a in m['accounts']), 'share counts match the broker')
         types = {p.get('type') for p in m['positions']}
         ok('Bitcoin & Equivalents' in types and 'Crypto & Equivalents' in types, 'Bitcoin and crypto are grouped on their own')
-        for p in ('/api/setup', '/api/snaptrade', '/api/agent', '/api/update', '/api/doom?brief=1', '/api/activity'):
+        for p in ('/api/setup', '/api/snaptrade', '/api/agent', '/api/update', '/api/doom?brief=1', '/api/euphoria?brief=1', '/api/dip', '/api/activity'):
             ok(call(p, timeout=120)[0] == 200, f'{p} answers')
+        wr = wait(lambda: call('/api/model', timeout=90)[1].get('wealth_rank'), 60, 'the wealth rank')
+        ok(bool(wr) and wr['readings'][-1]['percentile'] == 62, 'the wealth rank is read from SnapTrade')
         # an account switched off is left out of everything, and comes back whole when switched on
         cr = next(a for a in m['accounts'] if 'Crypto' in a['name'])
         ok(call('/api/account/hide', {'id': cr['id'], 'hidden': True})[0] == 200, 'an account is switched off')

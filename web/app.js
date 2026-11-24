@@ -90,7 +90,7 @@
   const ST = { model: null, page: 'home', range: 'All', mode: 'value', sort: ['value', -1], filter: '', acct: null,
                actFilter: { kind: '', symbol: '', account: '' }, menu: null, setup: null };
   const PAGES = { '/': 'home', '/positions': 'positions', '/options': 'options', '/income': 'income', '/analysis': 'analysis',
-                  '/risk': 'risk', '/activity': 'activity', '/settings': 'settings', '/market': 'market', '/doom': 'doom', '/assets': 'assets', '/customize': 'customize' };
+                  '/risk': 'risk', '/activity': 'activity', '/settings': 'settings', '/market': 'market', '/doom': 'doom', '/euphoria': 'euphoria', '/assets': 'assets', '/customize': 'customize' };
   const main = $('#main');
 
   function go(path, push = true) {
@@ -176,7 +176,7 @@
         : loadingView('Opening Basis', 'Working through your history. The first load after a start takes the longest; after that pages open at once.'));
       return;
     }
-    const fn = { home, positions, options, income, analysis, risk, activity, settings, market, doom: doomPage, assets: assetsPage, customize: customizePage }[ST.page] || home;
+    const fn = { home, positions, options, income, analysis, risk, activity, settings, market, doom: doomPage, euphoria: euphoriaPage, assets: assetsPage, customize: customizePage }[ST.page] || home;
     const page = h('div', { class: 'page' + (['market', 'analysis', 'income', 'options'].includes(ST.page) ? ' mid-w' : '') });
     fill(main, page);
     desktopHooks();
@@ -728,6 +728,24 @@
     'By kind': ['Calls sold are covered calls, puts sold are cash-secured puts, and bought is every contract you bought and later sold, let expire or exercised.'],
     'Options by stock': ['Closed contracts for each stock: what selling made, what buying made, and the two together. Click a row for the stock.'],
     'Options sold': ['Premium from contracts you sold, by the month each one closed: the whole premium when it expired, less the cost when you bought it back. Contracts you bought are left out.'],
+    'Euphoria score': [
+      'The mirror of the Doom score: how much greed is pushing prices up, 0 to 100, scored the same way for every trading day since 2010. Greed 40% (CNN Fear & Greed, a low VIX, a low VIX against its 3-month version, a low put/call ratio, a tight junk bond spread), Price heat 30% (S&P 500 and Nasdaq-100 over their 200-day averages, the S&P 500’s one-year return, new 52-week highs in the last month), Valuation 15% (P/E over its 10-year median) and Crypto 15% (Crypto Fear & Greed, Bitcoin over its 200-day average).',
+      'What to do with it: high euphoria is the time to stop adding leverage, let the margin buffer grow and build the war chest for the next doom cycle. Not to sell everything: markets often keep rising for months after a high reading. A great run is not proof of genius, and it can still reverse.'],
+    'Today against past tops': ['Today’s score and its groups next to the hottest day before the market tops of January 2018, February 2020, January 2022 and February 2025. It shows which kind of greed today has and how it compares with tops that did turn.'],
+    'Euphoria cycle': [
+      'A euphoria cycle starts the day the score closes at 70 or higher, peaks at its highest close, and ends after 10 trading days in a row under 50. One that peaks at 80 or higher is an era of euphoria. The start is known at the time; the peak only later.',
+      'How to use it for selling: while a cycle is on, trim leverage in steps into strength instead of trying to call the exact top, and move what you free up to cash or margin room. That is the money the next doom cycle is for.'],
+    'Selling the top, buying the panic': ['Each past euphoria cycle against the doom peak that came after it: how often the S&P 500 was lower at the doom peak than on the day euphoria peaked, by how much, and how long it took. That gap is the case for trimming at high euphoria and buying again at high doom. Euphoria can run a long time, so the plan is steps, not one trade.'],
+    'Euphoria score over time': ['The euphoria and doom scores every trading day, with your own highs marked. The shaded band is 80 and up; the dashed line is today’s level.'],
+    'Your highs, and what the market looked like': ['Every high of your own time-weighted return that was followed by a fall of 15% or more, with the euphoria score then (and the highest in the month before), what ran hottest, how much you rose in the 3 months before, your leverage, how far you fell and how long it took to get back. These are your own tells for when to rein in.'],
+    'Every euphoria cycle since 2010, and the panic after it': ['Each euphoria cycle from start to cool-off, its peak, and the doom peak that came after it: the S&P 500 at one peak against the other, and its fall from its top to its low.'],
+    'What followed each level': ['The first day the score reached each level after 40 trading days below it, and the S&P 500 six months and a year later. High readings rarely end the run at once; they make the dips that do come more likely. Past results only.'],
+    'Every reading, today against past tops': ['Each of the thirteen readings today and on each past top, with its 0 to 100 greed score, so you can see which part of today’s greed is high.'],
+    'War chest': [
+      'What you could put to work in the next crash: cash, plus what the margin account could still borrow at each depth of a fall and keep room for a further fall after buying (the safety margin you pick). Cash stays cash in a crash; margin room does not, because the same loan becomes a bigger share of what you hold as prices fall.',
+      'Each holding moves by its own beta to the S&P 500 (a year of daily returns). Doom at each depth is the score past selloffs reached that far under the S&P 500’s high. Outside a doom cycle this is the main card: the war chest gets built before the panic, not during it.'],
+    'Liquidation line': ['How far the S&P 500 would have to fall from today, with your holdings moving by their betas, before the margin buffer is gone and the broker can sell without asking, and where the loan would pass everything you hold. Each depth is set against past crashes, from light ones to 2008 and the dot-com bust, with the doom score those depths came with.'],
+    'Wealth rank': ['Where your account balance ranks among SnapTrade’s users, from SnapTrade’s own percentile figure. SnapTrade works it out once a month; Basis keeps each reading.'],
   };
   function helpIcon(key) {
     return HELP[key] ? h('button', { type: 'button', class: 'qhelp', 'data-help': key, 'aria-label': 'How this works', 'aria-expanded': 'false' }, '?') : null;
@@ -1126,8 +1144,8 @@
     return h('div', { class: 'dhead' + (big ? ' lg' : '') }, h('div', { class: 'dscore', text: Math.round(n.score) }),
       h('div', {}, h('div', { class: 'dlabel', text: n.label }), h('div', { class: 'faint', style: 'font-size:12px', text: `0 is calm, 100 is panic. ${longDate(n.date)}.${rng}` })));
   }
-  function doomGauge(d) {
-    const g = h('div', { class: 'dgauge' });
+  function doomGauge(d, cls) {
+    const g = h('div', { class: 'dgauge' + (cls ? ' ' + cls : '') });
     for (const mk of d.marks) {
       const t = h('b', { class: 'dmark' }); t.style.left = mk.score + '%';
       t.addEventListener('pointermove', (ev) => showTip(ev.clientX, ev.clientY, mk.name, [{ label: longDate(mk.date), value: mk.score.toFixed(0) }]));
@@ -1138,18 +1156,18 @@
     g.append(now);
     return h('div', { class: 'dgauge-wrap' }, g, h('div', { class: 'dzones' }, [...d.bands].reverse().map((b) => h('span', { text: b.name }))));
   }
-  function doomGroups(d) {
+  function doomGroups(d, col = doomColor) {
     return h('div', { class: 'dgroups' }, d.groups.map((gr) => {
       const v = d.now.groups[gr.key], bar = h('i');
-      bar.style.width = (v || 0) + '%'; bar.style.background = doomColor(v);
+      bar.style.width = (v || 0) + '%'; bar.style.background = col(v);
       return h('div', {}, h('span', { text: gr.name }), h('b', { class: 'mono', text: isNum(v) ? v.toFixed(0) : '-' }), h('div', { class: 'dbar' }, bar));
     }));
   }
-  function doomCompare(d) {
-    const rows = [{ name: 'Today', date: d.now.date, score: d.now.score, today: true }, ...d.marks.map((mk) => ({ name: mk.name, date: mk.date, score: mk.score }))]
+  function doomCompare(d, col = doomColor, extra = []) {
+    const rows = [{ name: 'Today', date: d.now.date, score: d.now.score, today: true }, ...d.marks.map((mk) => ({ name: mk.name, date: mk.date, score: mk.score })), ...extra]
       .sort((a, b) => b.score - a.score);
     return h('div', { class: 'dcmp' }, rows.map((r) => {
-      const bar = h('i'); bar.style.width = r.score + '%'; bar.style.background = doomColor(r.score);
+      const bar = h('i'); bar.style.width = r.score + '%'; bar.style.background = col(r.score);
       return h('div', { class: 'drow' + (r.today ? ' today' : '') }, h('span', { class: 'n' }, h('b', { text: r.name }), h('em', { text: longDate(r.date) })),
         h('div', { class: 'dbar' }, bar), h('span', { class: 'v mono', text: r.score.toFixed(0) }));
     }));
@@ -1172,9 +1190,230 @@
     const c = panel('Doom score', ['/market', 'Details'], h('div', { class: 'loading', text: 'Loading' }));
     getDoom(true).then((d) => {
       if (!d || d.error || !d.now) { fill(c, c.firstChild, h('p', { class: 'faint', text: (d && d.error) || 'No data yet.' })); return; }
-      fill(c, c.firstChild, doomHead(d), doomGauge(d), doomGroups(d), doomCompare(d), h('p', { class: 'dim', style: 'font-size:13px;margin:12px 0 0', text: doomLine(d) }), doomButton(d));
+      const eu = h('div');
+      fill(c, c.firstChild, doomHead(d), doomGauge(d), doomGroups(d), doomCompare(d), h('p', { class: 'dim', style: 'font-size:13px;margin:12px 0 0', text: doomLine(d) }), doomButton(d), eu);
+      getEuph(true).then((e) => { if (e && e.now) fill(eu, euphButton(e)); }).catch(() => {});
     }).catch(() => c.remove());
     return c;
+  }
+  // ---- euphoria score (fin/euphoria.py): the mirror of the doom score ----------------------------------------------
+  function euphColor(v) {           // sequential: dark slate at 0, teal at 50, mint at 100
+    const t = Math.max(0, Math.min(100, v || 0)), [a, b, k] = t <= 50 ? [[66, 66, 104], [36, 128, 128], t / 50] : [[36, 128, 128], [86, 226, 166], (t - 50) / 50];
+    return `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * k)).join(',')})`;
+  }
+  function getEuph(brief) {
+    const key = brief ? 'euphBrief' : 'euphFull', c = ST[key];
+    if (c && Date.now() - c.at < 600e3) return Promise.resolve(c.d);
+    return api('/api/euphoria' + (brief ? '?brief=1' : '')).then((d) => { ST[key] = { d, at: Date.now() }; return d; });
+  }
+  function euphHead(d, big) {
+    return h('div', { class: 'dhead' + (big ? ' lg' : '') }, h('div', { class: 'dscore', text: Math.round(d.now.score) }),
+      h('div', {}, h('div', { class: 'dlabel', text: d.now.label }), h('div', { class: 'faint', style: 'font-size:12px', text: `0 is cold, 100 is euphoria. ${longDate(d.now.date)}.` })));
+  }
+  function euphButton(d) {
+    const cur = d.cycle && d.cycle.current;
+    return h('a', { class: 'btn doom-btn eu' + (cur ? ' on' : ''), href: '/euphoria' }, h('span', { text: 'Euphoria dashboard' }),
+      h('em', { text: cur ? `${cur.phase}, day ${cur.length}, peak ${cur.peak.toFixed(0)}` : `${Math.round(d.now.score)}, ${d.now.label.toLowerCase()}` }));
+  }
+  // short names and values for a reading, as the tables show them
+  const EU_SHORT = { fg: 'CNN Fear & Greed', vix: 'VIX', vix_ratio: 'VIX vs 3-month', pc: 'Put/call', junk: 'Junk spread', spx_200: 'S&P vs 200-day',
+    ndx_200: 'Nasdaq-100 vs 200-day', spx_1y: 'S&P one-year', spx_highs: 'New highs', spx_pe: 'S&P P/E vs median', ndx_pe: 'Nasdaq-100 P/E vs median',
+    cfg: 'Crypto Fear & Greed', btc_200: 'Bitcoin vs 200-day' };
+  function euRaw(unit, raw, pe) {
+    if (!isNum(raw)) return '-';
+    if (unit === 'index') return raw.toFixed(0);
+    if (unit === 'level') return raw.toFixed(1);
+    if (unit === 'ratio') return raw.toFixed(2);
+    if (unit === 'pctpt') return raw.toFixed(2) + '%';
+    if (unit === 'pct') return spct(raw, 1);
+    if (unit === 'count') return `${raw} of 21`;
+    return isNum(pe) ? `${pe.toFixed(1)} (${spct(raw - 1, 0)})` : spct(raw - 1, 0);
+  }
+  function euHot(d, hot) {
+    const unit = Object.fromEntries(d.components.map((c) => [c.key, c.unit]));
+    return (hot || []).map((x) => `${EU_SHORT[x.key]} ${euRaw(unit[x.key], x.raw)}`).join(', ');
+  }
+  // a score in a colored chip, with an optional line under it
+  function scoreChip(v, col = euphColor) {
+    if (!isNum(v)) return h('span', { class: 'faint', text: '-' });
+    const b = h('b', { class: 'mono chipv', text: v.toFixed(0) }); b.style.background = col(v);
+    return b;
+  }
+  function euphLine(d) {
+    const out = [], ref = d.marks.find((mk) => mk.key === '2025'), n = Math.round(d.now.score);
+    if (ref) {
+      const diff = Math.round(ref.score) - n;
+      out.push(diff > 0 ? `${diff} point${diff === 1 ? '' : 's'} under the peak before the tariff crash (${ref.score.toFixed(0)} on ${longDate(ref.date)}).`
+        : diff < 0 ? `${-diff} point${diff === -1 ? '' : 's'} above the peak before the tariff crash (${ref.score.toFixed(0)}).` : 'Level with the peak before the tariff crash.');
+    }
+    if (d.now.hot && d.now.hot.length) out.push(`Greediest readings now: ${euHot(d, d.now.hot)}.`);
+    return out.join(' ');
+  }
+  // the reminder: when things are great, what came after the last times they were this great
+  function euphGuard(d) {
+    const sc = d.now.score, rules = (d.cycle || {}).rules || {}, hs = (d.cycle || {}).hindsight;
+    const lv = (d.levels || []).filter((x) => x.level <= Math.max(sc, 60)).pop();
+    if (sc >= 60 && lv) {
+      return h('div', { class: 'eguard hot' }, h('b', { text: 'Things are great. It can still go back down.' }),
+        h('p', { text: `After the score first reached ${lv.level}, the S&P 500 dipped 5% or more within six months ${lv.dip5} of ${lv.count} times, and 10% or more ${lv.dip10} times (worst ${pct(-lv.worst_drop, 0)}, from ${longDate(lv.worst_date)}). It was higher a year later ${lv.up_12m} of ${lv.n_12m} times, so this is not a reason to sell everything. It is the time to stop adding leverage and to build the war chest.` }));
+    }
+    return h('div', { class: 'eguard' }, h('b', { text: 'Euphoria check' }),
+      h('p', { text: `Nothing to rein in right now. A euphoria cycle starts when the score reaches ${rules.start}.` + (hs ? ` After past cycles, the S&P 500 was lower at the next Doom peak ${hs.lower} of ${hs.count} times.` : '') }));
+  }
+
+  // ---- war chest and liquidation line (fin/warchest.py) -------------------------------------------------------------
+  const ACCT_STATUS = { ok: ['Buffer left'], call: ['Margin call'], wiped: ['Loan over holdings'], past: ['Already this deep'] };
+  const doomAt = (x) => (!x ? '-' : x.beyond ? `${x.max.toFixed(0)}+` : x.mid.toFixed(0));
+  const doomAtText = (x) => (!x ? '' : x.beyond
+    ? `that is deeper than any day since 2010 (the deepest was ${pct(x.deepest, 0)} under the high), so expect the Doom score at its highest readings (${x.max.toFixed(0)} so far)`
+    : `the Doom score has read about ${x.mid.toFixed(0)} on past days that deep (${x.lo.toFixed(0)} to ${x.hi.toFixed(0)})`);
+  const sumBuf = (r) => r.accounts.reduce((a, x) => a + x.buffer, 0);
+  function warChestCard(w, active) {
+    const f = String(ST.wcSafe || 0.1), s0 = w.scenarios[0], lines = w.lines || [];
+    const kv = (a, v, cls, title) => h('div', { class: 'kv', title: title || null }, h('span', { text: a }), h('span', { class: cls || '', text: v }));
+    const chips = h('div', { class: 'chips' }, w.safety.map((x) => h('button', { class: 'chip' + (String(x) === f ? ' on' : ''), text: pct(x, 0), onclick: () => { ST.wcSafe = x; render(); } })));
+    const left = h('div', { class: 'wc-now' },
+      h('div', { class: 'label', text: 'Ready to deploy now' }),
+      h('div', { class: 'big' + (s0.chest[f] > 0 ? '' : ' down'), text: money(s0.chest[f], 0) }),
+      h('div', { class: 'dim', style: 'font-size:13px', text: lines.some((l) => isNum(l.call) && l.call <= +f)
+        ? `${money(w.cash_total, 0)} in cash, and no safe margin room: a ${pct(+f, 0)} S&P 500 fall would bring a margin call even if you bought nothing more.`
+        : `${money(w.cash_total, 0)} in cash, plus ${money(s0.chest[f] - w.cash_total, 0)} you could borrow and still take another ${pct(+f, 0)} S&P 500 fall without a margin call.` }),
+      h('div', { style: 'margin-top:12px' },
+        kv('Cash, all accounts', money(w.cash_total, 0), '', w.cash.map((c) => `${c.account}: ${money(c.cash, 2)}`).join('\n')),
+        ...lines.map((l) => kv(`Margin buffer, ${l.account}`, money(l.buffer, 0), l.buffer < 0 ? 'down' : '')),
+        ...lines.filter((l) => isNum(l.buying_power)).map((l) => kv('Buying power the broker shows', money(l.buying_power, 0), '', 'From SnapTrade: what the broker would let you buy right now. Not all of it is safe to use.')),
+        ...(w.transit || []).map((t) => kv(`On the way${t.to ? ' to ' + t.to : ''}, not counted`, money(t.value, 0)))),
+      h('div', { class: 'wc-safe' }, h('span', { class: 'faint', text: 'After buying, still able to take another S&P 500 fall of' }), chips));
+    const sq = table([
+      { label: 'S&P 500 from here', get: (r) => (r.fall ? spct(-r.fall, 0) : 'Today') },
+      { label: 'Under its high', r: true, m: true, get: (r) => pct(r.under_high, 1) },
+      { label: 'Doom', r: true, get: (r) => doomAt(r.doom) },
+      { label: 'Net worth', r: true, get: (r) => money(r.net_worth, 0) },
+      { label: 'Margin buffer', r: true, cls: (r) => (sumBuf(r) < 0 ? 'down' : ''), get: (r) => money(sumBuf(r), 0) },
+      { label: 'Ready to deploy', r: true, get: (r) => money(r.chest[f], 0) },
+      { label: 'Margin account', r: true, get: (r) => h('span', { class: 'st ' + r.status, text: ACCT_STATUS[r.status][0] }) }], w.scenarios);
+    return h('div', { class: 'card wc' + (active ? '' : ' lead') },
+      h('div', { class: 'panel-head' }, ht('War chest'), h('span', { class: 'tag ' + (active ? 'bad' : ''), text: active ? 'Doom cycle on: this is what it is for' : 'Standby: build it up' })),
+      h('div', { class: 'wc-grid' }, left, h('div', { class: 'wc-table' }, h('div', { class: 'label', text: 'How it shrinks as prices fall' }), sq)),
+      h('p', { class: 'note', text: `Cash stays cash in a crash. Margin room does not: as prices fall, the same loan is a bigger share of what you hold, so the room shrinks just when doom makes buying look best. Ready to deploy is cash plus what the margin account could borrow at that point and still take another ${pct(+f, 0)} fall after buying, new buys moving like what it holds now. Doom is what the score read on past days with the S&P 500 that far under its high.` }));
+  }
+  const RULER_LABELS = { iran: 'Iran war', tariff: 'Tariff crash', 2022: '2022', covid: 'COVID', dotcom: 'Dot-com', gfc: '2008' };
+  function liqRuler(el, w, l) {
+    const W = Math.max(300, el.clientWidth || 600), padL = 12, padR = 18, max = 0.6;
+    const x = (v) => padL + (Math.min(Math.max(v, 0), max) / max) * (W - padL - padR);
+    const now = -w.now.now, call = l ? l.call_under_high : null, wipe = l ? l.wipe_under_high : null;
+    // now, the margin call and the loan-over-holdings lines: labels go in the first row above where they fit
+    const marks = [[now, 'Now', 'var(--text)'], [call, 'Margin call', 'var(--warn)'], [wipe, 'Loan over holdings', 'var(--down)']].filter((mk) => isNum(mk[0]));
+    const placed = [];
+    for (const mk of marks) {
+      const label = `${mk[1]} ${pct(mk[0], 1)}`, wpx = label.length * 6.8, cx = x(mk[0]);
+      const anchor = cx < wpx / 2 + 4 ? 'start' : cx > W - wpx / 2 - 4 ? 'end' : 'middle';
+      const x0 = anchor === 'start' ? cx : anchor === 'end' ? cx - wpx : cx - wpx / 2, x1 = x0 + wpx;
+      let row = 0;
+      while (placed.some((p) => p.row === row && !(x1 + 10 < p.x0 || x0 > p.x1 + 10))) row++;
+      placed.push({ mk, label, anchor, x0, x1, row });
+    }
+    const rows = Math.max(1, ...placed.map((p) => p.row + 1)), y0 = 14 * rows + 16, H = y0 + 74;
+    const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': 'Past crashes against your margin call line' });
+    const zone = (a, b, fill) => { if (b > a) svg.append(s('rect', { x: x(a), y: y0, width: Math.max(0, x(b) - x(a)), height: 10, fill })); };
+    zone(0, now, 'var(--line-hi)');
+    zone(now, isNum(call) ? call : max, 'rgba(76,224,160,0.45)');
+    if (isNum(call)) zone(Math.max(now, call), isNum(wipe) ? wipe : max, 'rgba(255,170,59,0.55)');
+    if (isNum(wipe)) zone(Math.max(now, wipe), max, 'rgba(255,101,132,0.5)');
+    const txt = (xx, yy, t, anchor, cls) => { const e = s('text', { x: Math.min(W - 4, Math.max(4, xx)), y: yy, 'text-anchor': anchor || 'middle', class: cls || '' }); e.textContent = t; svg.append(e); return e; };
+    for (let t = 0; t <= max + 1e-9; t += 0.1) txt(x(t), H - 4, t === 0 ? '0%' : `${Math.round(t * 100)}%`, t === 0 ? 'start' : t >= max - 1e-9 ? 'end' : 'middle', 'axis');
+    // past crashes: a dot each on the track, the best known named underneath
+    const named = [];
+    for (const r of w.crashes) {
+      const cx = x(-r.spx), c = s('circle', { cx, cy: y0 + 5, r: 4, fill: 'var(--text)', stroke: 'var(--card)', 'stroke-width': 1.5 });
+      c.addEventListener('pointermove', (ev) => showTip(ev.clientX, ev.clientY, r.name, [{ label: 'S&P 500', value: spct(r.spx, 1) }, { label: 'Dates', value: `${shortDate(r.top)} to ${shortDate(r.low)}` }, { label: 'Your margin account', value: ACCT_STATUS[r.status][0] }]));
+      c.addEventListener('pointerleave', hideTip);
+      svg.append(c);
+      if (RULER_LABELS[r.key]) named.push([cx, RULER_LABELS[r.key]]);
+    }
+    named.forEach(([cx, t], k) => txt(cx, y0 + 27 + (k % 2) * 14, t, null, 'lbl'));
+    for (const p of placed) {
+      const [v, , col] = p.mk, yy = 10 + p.row * 14;
+      svg.append(s('line', { x1: x(v), x2: x(v), y1: yy + 3, y2: y0 + 14, stroke: col, 'stroke-width': 2 }));
+      txt(x(v), yy, p.label, p.anchor, 'mk').style.fill = col;
+    }
+    fill(el, svg);
+  }
+  function liquidationCard(w) {
+    const l = w.line, now = w.now;
+    if (!l) return { el: h('div', { class: 'card' }, ht('Liquidation line'), h('p', { class: 'dim', text: 'No margin loan, so nothing can be sold out from under you.' })), draw: () => {} };
+    const stat = (label, value, cls, sub) => h('div', { class: 'lstat' }, h('div', { class: 'label', text: label }), h('div', { class: 'v ' + (cls || ''), text: value }), sub ? h('div', { class: 'faint', style: 'font-size:12px', text: sub }) : null);
+    const head = l.call == null
+      ? h('p', { class: 'dim', text: 'No fall of the S&P 500 empties the margin buffer at today’s holdings.' })
+      : l.call === 0
+        ? h('div', { class: 'liq-head' }, h('div', { class: 'big down', text: 'Now' }), h('p', { class: 'dim', text: `The buffer at ${l.account} is already gone (estimate). The broker can sell without asking.` }))
+        : h('div', { class: 'liq-head' }, h('div', { class: 'big ' + (l.call < 0.1 ? 'down' : l.call < 0.2 ? 'warn' : 'up'), text: spct(-l.call, 1) }),
+          h('div', {}, h('div', { class: 'dlabel', text: 'S&P 500 fall from here to a margin call' }),
+            h('p', { class: 'dim', style: 'margin:4px 0 0;font-size:13.5px', text: `That puts the S&P 500 ${pct(l.call_under_high, 1)} under its ${longDate(now.top)} high, with your margin holdings down about ${pct(l.call_portfolio, 0)}. The buffer at ${l.account} is gone there and the broker can sell without asking. At that depth ${doomAtText(l.call_doom)}.` })));
+    const ruler = h('div', { class: 'chart liq-ruler' });
+    const stats = h('div', { class: 'lstats' },
+      stat('S&P 500 now', `${pct(-now.now, 1)} under its high`, '', `High ${shortDate(now.top)}; lowest close since, ${pct(-now.low_fall, 1)} under, on ${shortDate(now.low)}`),
+      stat('Loan bigger than the holdings', isNum(l.wipe) ? `${spct(-l.wipe, 1)} from here` : 'never', 'down', isNum(l.wipe_under_high) ? `${pct(l.wipe_under_high, 1)} under the high; Doom about ${doomAt(l.wipe_doom)}` : ''),
+      stat('Your margin holdings move', `${l.beta.toFixed(2)}x the S&P 500`, '', 'Beta from the last year of daily prices'),
+      stat('Average maintenance', pct(l.maint, 1), '', `On ${money(l.holdings, 0)} held, ${money(l.debt, 0)} borrowed`));
+    const crashT = table([
+      { label: 'Crash', get: (r) => h('div', {}, h('div', { text: r.name }), h('div', { class: 'faint', style: 'font-size:12px', text: `${shortDate(r.top)} to ${shortDate(r.low)}` })) },
+      { label: 'S&P 500', r: true, cls: () => 'down', get: (r) => spct(r.spx, 1) },
+      { label: 'Nasdaq-100', r: true, m: true, cls: () => 'down', get: (r) => (isNum(r.ndx) ? spct(r.ndx, 1) : '-') },
+      { label: 'Doom at the low', r: true, m: true, get: (r) => (isNum(r.doom) ? scoreChip(r.doom, doomColor) : h('span', { class: 'faint', text: 'before 2010' })) },
+      { label: 'You then', r: true, m: true, get: (r) => (isNum(r.you) ? spct(r.you, 1) : '-') },
+      { label: 'From here', r: true, m: true, get: (r) => (isNum(r.further) ? spct(-r.further, 1) : 'already past') },
+      { label: 'Margin account', r: true, get: (r) => h('span', { class: 'st ' + r.status, text: ACCT_STATUS[r.status][0] }) },
+      { label: 'Net worth there', r: true, m: true, get: (r) => (isNum(r.net_worth) ? money(r.net_worth, 0) : '-') }], w.crashes);
+    const takeT = table([
+      { label: 'To take an S&P 500 fall of', get: (t) => `${pct(t.fall, 0)} from here` },
+      { label: 'Deposit', r: true, get: (t) => (t.ok ? 'nothing' : money(t.deposit, 0)) },
+      { label: 'Or sell', r: true, get: (t) => (t.ok ? 'nothing' : t.sell == null ? 'more than you hold' : money(t.sell, 0)) }], l.to_take);
+    const topShare = Math.max(...l.weights.map((x) => x.share), 0.0001);
+    const wts = h('div', {}, l.weights.map((x) => {
+      const fl = h('div', { class: 'fill' }); fl.style.width = (x.share / topShare) * 100 + '%'; fl.style.background = 'var(--down)';
+      return h('div', { class: 'hbar', title: `Beta ${x.beta.toFixed(2)} (${x.how}), maintenance ${pct(x.maint, 0)}, down ${pct(x.fall, 0)} at the line` },
+        h('span', { class: 'n', text: x.symbol.replace('-USD', '') }), h('div', { class: 'track' }, fl), h('span', { class: 'v', text: pct(x.share, 0) }));
+    }));
+    const el = h('div', { class: 'card' }, h('div', { class: 'panel-head' }, ht('Liquidation line'), h('a', { class: 'more', href: '/risk', text: 'Margin' })),
+      head, stats,
+      h('div', { class: 'label', style: 'margin:18px 0 0', text: 'Past crashes, measured from the S&P 500’s high' }), ruler,
+      h('div', { class: 'legend' }, h('span', {}, mkKey('var(--line-hi)', true), 'Fallen so far'), h('span', {}, mkKey('rgba(76,224,160,0.45)', true), 'Buffer left'), h('span', {}, mkKey('rgba(255,170,59,0.55)', true), 'Margin call'), h('span', {}, mkKey('rgba(255,101,132,0.5)', true), 'Loan over holdings')),
+      h('div', { style: 'margin-top:8px' }, crashT),
+      h('div', { class: 'liq-two' },
+        h('div', {}, h('div', { class: 'label', style: 'margin-bottom:6px', text: 'Getting further from the line' }), takeT),
+        h('div', {}, h('div', { class: 'label', style: 'margin-bottom:10px', text: 'What drains the buffer most at the line' }), wts)),
+      h('p', { class: 'note', text: 'Each crash is measured from the S&P 500’s high to its lowest close. From here is how much further the S&P 500 would have to fall from today for this selloff to match it; the account status is what today’s holdings would face there. You then is your own portfolio’s fall in that crash, from your time-weighted return. Each holding moves by its own beta, no holding falls more than 95%, and the maintenance rates are the Margin page’s. A broker can raise its rates in a crash, which would move the line closer. Selling spreads the sale over everything held, the money paying down the loan. Estimates, not the broker’s numbers.' }));
+    return { el, draw: () => liqRuler(ruler, w, l) };
+  }
+
+  // ---- wealth rank (SnapTrade) --------------------------------------------------------------------------------------
+  // SnapTrade's Wealth Rank chart, traced bar by bar from its page in November 2026: members by portfolio size, smallest
+  // on the left. SnapTrade's API gives the percentile, not the chart, so the shape stays as traced and the marker moves.
+  const WR_SHAPE = [2, 2, 3, 2, 3, 3, 3, 3, 4, 3, 4, 4, 5, 7, 6, 7, 8, 8, 11, 12, 13, 16, 17, 21, 20, 23, 27, 29, 32, 34,
+    37, 40, 38, 40, 37, 36, 34, 31, 27, 24, 21, 17, 14, 10, 8, 7, 4, 5];
+  const monthName = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'long' });
+  function wealthCard(m) {
+    const wr = m.wealth_rank;
+    if (!wr || !wr.readings || !wr.readings.length) return null;
+    const rs = wr.readings, r = rs[rs.length - 1], prev = rs.length > 1 ? rs[rs.length - 2] : null;
+    const total = WR_SHAPE.reduce((a, b) => a + b, 0), want = (r.percentile / 100) * total, n = WR_SHAPE.length;
+    let acc = 0, pos = n;
+    for (let i = 0; i < n; i++) { if (acc + WR_SHAPE[i] >= want) { pos = i + (want - acc) / WR_SHAPE[i]; break; } acc += WR_SHAPE[i]; }
+    const bw = 10, HH = 52, mx = Math.max(...WR_SHAPE);
+    const svg = s('svg', { viewBox: `0 0 ${n * bw} ${HH}`, class: 'wr-chart', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+    WR_SHAPE.forEach((v, i) => {
+      const hh = Math.max(2, (v / mx) * HH);
+      svg.append(s('rect', { x: i * bw + 1, y: HH - hh, width: bw - 2, height: hh, fill: i + 0.5 <= pos ? 'var(--accent)' : 'var(--bar-flat)' }));
+    });
+    const you = h('span', { class: 'wr-you', text: 'You' }); you.style.left = (pos / n) * 100 + '%';
+    const diff = prev ? r.percentile - prev.percentile : null;
+    return panel('Wealth rank', null,
+      h('div', { class: 'wr-num', text: `Larger than ${r.percentile}%` }),
+      h('div', { class: 'faint', style: 'font-size:12.5px;margin:2px 0 12px', text: 'of SnapTrade members' + (diff ? `, ${diff > 0 ? 'up' : 'down'} ${Math.abs(diff)} since ${monthName(prev.as_of)}` : '') }),
+      h('div', { class: 'wr', role: 'img', 'aria-label': `Larger than ${r.percentile}% of SnapTrade members` }, svg, you),
+      h('div', { class: 'wr-axis' }, h('span', { text: 'Smaller portfolios' }), h('span', { text: 'Larger' })),
+      h('p', { class: 'faint', style: 'font-size:12px;margin:10px 0 0', text: `Data from SnapTrade, as of ${longDate(r.as_of)}. SnapTrade works the rank out once a month.` }));
   }
   function chartCard(m) {
     const c = h('div', { class: 'card panel' });
@@ -1411,14 +1650,14 @@
     const al = alerts(m);
     const hero = heroCard(m), chart = chartCard(m), assets = assetsCard(m), heat = heatmap(m), income = incomeCard(m), alloc = allocationCard(m);
     const opts = m.sells_options ? optionsCard() : null, mkt = marketCard(), margin = marginCard(m), accts = accountsCard(m), movers = moversCard(m), coming = comingCard(m), recv = receivedCard(m);
-    const doomc = doomCard();
+    const doomc = doomCard(), rank = wealthCard(m);
     const col = (...k) => h('div', { class: 'col' }, ...k.filter(Boolean));
     const pair = (a, b) => (a && b ? h('div', { class: 'pair' }, a, b) : a || b);
     let cols;
-    if (t === 1) cols = [col(...al, hero, chart, margin, assets, doomc, heat, income, alloc, opts, mkt, accts, movers, coming, recv)];
-    else if (t === 2) cols = [col(...al, hero, chart, assets, heat, pair(income, alloc), pair(opts, mkt)), col(margin, doomc, accts, movers, coming, recv)];
-    else if (t === 3) cols = [col(...al, hero, chart, assets, heat), col(income, alloc, pair(opts, mkt)), col(margin, doomc, accts, movers, pair(coming, recv))];
-    else cols = [col(...al, hero, chart, assets, income), col(heat, alloc, recv), col(doomc, opts, mkt, coming), col(margin, accts, movers)];
+    if (t === 1) cols = [col(...al, hero, chart, margin, assets, doomc, heat, income, alloc, opts, mkt, accts, movers, coming, recv, rank)];
+    else if (t === 2) cols = [col(...al, hero, chart, assets, heat, pair(income, alloc), pair(opts, mkt)), col(margin, doomc, accts, movers, coming, recv, rank)];
+    else if (t === 3) cols = [col(...al, hero, chart, assets, heat), col(income, alloc, pair(opts, mkt)), col(margin, doomc, accts, movers, pair(coming, recv), rank)];
+    else cols = [col(...al, hero, chart, assets, income), col(heat, alloc, recv), col(doomc, opts, mkt, coming), col(margin, accts, movers, rank)];
     page.append(h('div', { class: 'dash t' + t }, cols));
   }
 
@@ -2743,7 +2982,7 @@
   async function doomPage(page) {
     page.classList.add('wide');
     page.append(h('div', { class: 'head' }, h('div', {}, h('h1', { text: 'Doom dashboard' }),
-      h('p', { class: 'sub', text: 'Doom cycles from start to peak to calm, and where the numbers say to buy the dip while one is on.' })),
+      h('p', { class: 'sub', text: 'Doom cycles from start to peak to calm, your war chest and liquidation line, and where the numbers say to buy the dip while one is on.' })),
       h('a', { class: 'more', href: '/market', text: 'Doom score details' })));
     const body = h('div', {}, loadingView('Reading the doom cycle, your margin and the dip analysis'));
     page.append(body);
@@ -2812,7 +3051,12 @@
       h('div', { class: 'line', style: 'display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap' },
         allEras.length > 6 ? h('button', { class: 'btn', text: ST.allEras ? 'Show the last six' : `Show all ${allEras.length}`, onclick: () => { ST.allEras = !ST.allEras; render(); } }) : null,
         h('span', { class: 'faint', style: 'font-size:12.5px', text: `Plus ${scares.length} smaller cycles that peaked between ${rules.start} and ${rules.era - 1}.` })));
-    const parts = [h('div', { class: 'grid g2 stack' }, cycCard, pathCard), h('div', { class: 'block' }, eraCard), h('div', { class: 'block' }, marginCard2), movesBlock()];
+    // the war chest leads while no cycle is on (build it); in a cycle it follows the cycle (use it)
+    const w = d.warchest, liq = w ? liquidationCard(w) : null, chest = w ? warChestCard(w, !!cur) : marginCard2;
+    const cycle = h('div', { class: 'grid g2 stack' + (cur ? '' : ' block') }, cycCard, pathCard);
+    const parts = cur
+      ? [cycle, h('div', { class: 'block' }, chest), liq ? h('div', { class: 'block' }, liq.el) : null, h('div', { class: 'block' }, eraCard), movesBlock()]
+      : [chest, liq ? h('div', { class: 'block' }, liq.el) : null, cycle, h('div', { class: 'block' }, eraCard), movesBlock()];
     // 5. the dip analysis
     const on = d.active || ST.dipForce;
     if (!on) {
@@ -2828,6 +3072,146 @@
     requestAnimationFrame(() => lineChart(pathBox, { dates: idx.map(() => '2000-01-01'), series, yrange: [0, 100], yfmt: (v) => v.toFixed(0), fmt: (v) => (isNum(v) ? v.toFixed(0) : '-'),
       height: 260, label: 'Doom cycles by day', ticks: idx.filter((i) => i % (maxLen > 100 ? 40 : 20) === 0).map((i) => [i, `day ${i}`]), titleFmt: (_, i) => `Day ${i}`,
       refs: [{ y: rules.era, color: 'rgba(229,72,77,0.5)' }] }));
+    if (liq) requestAnimationFrame(liq.draw);
+  }
+
+  // ---- Euphoria dashboard (fin/euphoria.py) -------------------------------------------------------------------------
+  async function euphoriaPage(page) {
+    page.classList.add('wide');
+    page.append(h('div', { class: 'head' }, h('div', {}, h('h1', { text: 'Euphoria dashboard' }),
+      h('p', { class: 'sub', text: 'The mirror of the Doom score: how hard greed is pushing prices up, what the market looked like at your own highs, and what came after.' })),
+      h('a', { class: 'more', href: '/doom', text: 'Doom dashboard' })));
+    const body = h('div', {}, loadingView('Scoring every trading day since 2010'));
+    page.append(body);
+    const d = await getEuph(false).catch((e) => ({ error: e.message }));
+    if (ST.page !== 'euphoria' || !body.isConnected) return;
+    if (!d || d.error || !d.now) { fill(body, h('div', { class: 'alert', text: (d && d.error) || 'No euphoria score data yet.' })); return; }
+    const now = d.now, cyc = d.cycle || {}, rules = cyc.rules || {}, hs = cyc.hindsight, tops = d.tops || [], cur = cyc.current;
+    const kv = (a, v, cls) => h('div', { class: 'kv' }, h('span', { text: a }), h('span', { class: cls || '', text: v }));
+    const med = (xs) => { const v = xs.filter(isNum).sort((a, b) => a - b); return v.length ? (v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2) : null; };
+    const lastTop = tops.length ? tops[tops.length - 1] : null;
+    // 1. today, the scale, the groups, today against past tops
+    const top = h('div', { class: 'grid g2 stack' },
+      h('div', { class: 'card' }, ht('Euphoria score'), euphHead(d, true), doomGauge(d, 'eu'), doomGroups(d, euphColor),
+        h('p', { class: 'dim', style: 'font-size:13.5px;margin:14px 0 0', text: euphLine(d) }), euphGuard(d)),
+      h('div', { class: 'card' }, ht('Today against past tops'),
+        doomCompare(d, euphColor, lastTop ? [{ name: 'Your last high', date: lastTop.date, score: lastTop.score }] : []),
+        h('div', { class: 'dnotes' }, d.marks.map((mk) => h('p', {}, h('b', { text: `${mk.name}. ` }),
+          `The score peaked at ${mk.score.toFixed(0)} on ${longDate(mk.date)}. The S&P 500 topped on ${longDate(mk.spx_top)} and fell ${pct(-mk.spx_fall, 1)} by ${longDate(mk.spx_low)}` + (mk.spx_back ? `; it was back above that high on ${longDate(mk.spx_back)}.` : '.'))),
+          lastTop ? h('p', {}, h('b', { text: 'Your last high. ' }), `${longDate(lastTop.date)}, with the score at ${lastTop.score.toFixed(0)}. Your portfolio then fell ${pct(-lastTop.fall, 1)} by ${longDate(lastTop.low_date)}.`) : null)));
+    // 2. the cycle, and what selling the top would have done
+    const phases = ['Rising', 'Peaking', 'Fading', 'Cooling'];
+    const cycCard = h('div', { class: 'card' }, h('div', { class: 'panel-head' }, ht('Euphoria cycle'), h('span', { class: 'tag ' + (cur ? 'good' : ''), text: cur ? 'On' : 'Standby' })),
+      cur ? h('div', {},
+        h('div', { class: 'dhead' }, h('div', { class: 'dscore', text: cur.now.toFixed(0) }),
+          h('div', {}, h('div', { class: 'dlabel', text: now.label }), h('div', { class: 'faint', style: 'font-size:12px', text: `Peak so far ${cur.peak.toFixed(0)} on ${longDate(cur.peak_date)}` }))),
+        h('div', { class: 'phases eu' }, [...phases, 'Ended'].map((ph) => h('span', { class: cur.phase === ph ? 'on' : '', text: ph }))),
+        h('div', { style: 'margin-top:12px' },
+          kv('Started', `${longDate(cur.start)} (${cur.length} trading days)`),
+          kv('Peak so far', `${cur.peak.toFixed(0)}, ${cur.days_since_peak === 0 ? 'today' : cur.days_since_peak === 1 ? '1 trading day ago' : cur.days_since_peak + ' trading days ago'}`),
+          kv('S&P 500 since the start', spct(cur.spx_from_start, 1), tone(cur.spx_from_start)),
+          kv(`Cool days (under ${rules.calm})`, `${cur.calm_days} of ${rules.calm_days}`)))
+        : h('p', { class: 'dim', text: `No cycle is on. One starts when the score reaches ${rules.start}. Score now ${now.score.toFixed(0)}.` }),
+      h('p', { class: 'faint', style: 'font-size:12px;margin:10px 0 0', text: `Rules, the mirror of a doom cycle: a cycle starts at ${rules.start}; its peak is the highest score until it ends; it ends after ${rules.calm_days} trading days in a row under ${rules.calm}. Rising means a new high in the last 3 trading days, Fading means 10 or more points under the peak, Cooling means under ${rules.calm}. A cycle that peaks at ${rules.era} or higher is an era of euphoria. Closing readings only.` }));
+    const hsCard = h('div', { class: 'card' }, ht('Selling the top, buying the panic'),
+      hs ? h('div', {},
+        h('div', { class: 'hsbig' }, h('b', { text: `${hs.lower} of ${hs.count}` }), h('span', { text: 'euphoria cycles since 2010 were followed by a Doom peak with the S&P 500 lower than on the day euphoria peaked.' })),
+        h('div', { style: 'margin-top:12px' },
+          kv('Median, euphoria peak to Doom peak', spct(hs.median_peak_to_peak, 1), tone(hs.median_peak_to_peak)),
+          kv('Median time between the two', `${Math.round(hs.median_days)} trading days`),
+          kv('Median fall, S&P 500 top to its low', spct(hs.median_top_to_low, 1), 'down'),
+          kv('Selling the day a cycle started instead', `lower ${hs.lower_from_start} of ${hs.count}, median ${spct(hs.median_start_to_peak, 1)}`)),
+        h('p', { class: 'dim', style: 'font-size:13px;margin:12px 0 0', text: `The day a cycle starts is known at the time; its peak is only known later. Euphoria can also run a long time: the longest cycle lasted ${hs.longest} trading days, from ${longDate(hs.longest_start)}. Buying back is the Doom dashboard's job.` }))
+        : h('p', { class: 'dim', text: 'Not enough history yet.' }));
+    // 3. history, with your own highs on it
+    const range = ST.euRange || '5Y';
+    const chips = h('div', { class: 'chips' }, ['1Y', '2Y', '5Y', 'All'].map((k) => h('button', { class: 'chip' + (range === k ? ' on' : ''), text: k === 'All' ? 'Since 2010' : k, onclick: () => { ST.euRange = k; render(); } })));
+    const hsr = d.history, back = { '1Y': 366, '2Y': 731, '5Y': 1827 }[range];
+    let i0 = 0;
+    if (back) { const s0 = new Date(Date.now() - back * 864e5).toISOString().slice(0, 10); i0 = Math.max(0, hsr.dates.findIndex((x) => x >= s0)); }
+    const chartBox = h('div', { class: 'chart' });
+    const histCard = h('div', { class: 'card' }, h('div', { class: 'head' }, ht('Euphoria score over time', null, { style: 'margin:0' }), chips),
+      h('div', { class: 'legend' }, h('span', {}, mkKey('var(--s-euph)'), 'Euphoria score'), h('span', {}, mkKey('var(--s-doom)'), 'Doom score'),
+        tops.length ? h('span', {}, mkKey('var(--gold)', true), 'Your highs') : null, h('span', {}, h('i', { class: 'dash' }), 'Today’s level'), h('span', {}, mkKey('rgba(69,201,166,0.22)', true), 'Euphoric (80 and up)')),
+      chartBox);
+    // 4. your own highs
+    const big = tops.filter((t) => t.max_before >= rules.start), cold = tops.filter((t) => t.score < 50);
+    const topsLine = !tops.length ? '' : [`At ${big.length} of your ${tops.length} highs the score had reached ${rules.start} or more in the month before`,
+      big.length ? `, and those falls were a median ${pct(-med(big.map((t) => t.fall)), 0)}.` : '.',
+      cold.length ? ` ${cold.length === 1 ? 'One' : cold.length} came with the score under 50 (${cold.map((t) => shortDate(t.date)).join(', ')}): bounces inside fearful markets, not euphoria.` : ''].join('');
+    const topsCard = h('div', { class: 'card' }, ht('Your highs, and what the market looked like'),
+      h('p', { class: 'dim', style: 'margin:0 0 10px;font-size:13.5px', text: `Every high of your time-weighted return that was followed by a fall of 15% or more. ${topsLine}` }),
+      table([
+        { label: 'Your high', get: (t) => h('div', {}, h('div', { text: shortDate(t.date) }), t.name ? h('div', { class: 'faint', style: 'font-size:12px', text: t.name }) : null) },
+        { label: 'Euphoria', r: true, get: (t) => h('div', { class: 'stackr' }, scoreChip(t.score), Math.round(t.max_before) > Math.round(t.score) ? h('div', { class: 'faint', style: 'font-size:11.5px', text: `${t.max_before.toFixed(0)} on ${shortDate(t.max_before_date)}` }) : null) },
+        { label: 'What ran hottest', get: (t) => h('span', { class: 'dim', style: 'font-size:12.5px', text: euHot(d, t.hot) }) },
+        { label: '3 months before', r: true, m: true, cls: (t) => tone(t.run_up_3m), get: (t) => spct(t.run_up_3m, 0) },
+        { label: 'Leverage', r: true, m: true, get: (t) => (isNum(t.leverage) ? t.leverage.toFixed(2) + 'x' : '-') },
+        { label: 'Then you fell', r: true, get: (t) => h('div', { class: 'stackr' }, h('span', { class: 'down', text: spct(t.fall, 1) }), h('div', { class: 'faint', style: 'font-size:11.5px', text: `by ${shortDate(t.low_date)}` })) },
+        { label: 'S&P 500 same days', r: true, m: true, cls: (t) => tone(t.spx_same), get: (t) => spct(t.spx_same, 1) },
+        { label: 'Doom in the fall', r: true, m: true, get: (t) => scoreChip(t.doom_peak, doomColor) },
+        { label: 'Back above it', r: true, get: (t) => (t.back ? shortDate(t.back) : `not yet (${spct(t.now_vs_high, 0)})`) }], [...tops].reverse()),
+      h('p', { class: 'faint', style: 'font-size:12px;margin:10px 0 0', text: 'Euphoria shows the reading on the day, and under it the highest in the month before when that was higher. What ran hottest is the three readings with the highest scores that day. Leverage is everything held over your own money across all accounts.' }));
+    // 5. every cycle and the panic after it
+    const past = [...(cyc.past || [])].reverse();
+    const cycRows = [...(cur ? [{ ...cur, name: 'This cycle', current: true }] : []), ...(ST.allEu ? past : past.slice(0, 8))];
+    const cycTable = h('div', { class: 'card' }, ht('Every euphoria cycle since 2010, and the panic after it'),
+      h('p', { class: 'dim', style: 'margin:0 0 10px;font-size:13.5px', text: `Each cycle (from ${rules.start} until it cools), its peak, and the Doom peak that came after it: the S&P 500 on one peak against the other, and its fall from its top to its low.` }),
+      table([
+        { label: 'Cycle', get: (e) => h('div', {}, h('div', { style: e.current ? 'font-weight:600;color:var(--text)' : '', text: e.name || 'Unnamed' }), h('div', { class: 'faint', style: 'font-size:12px', text: `${shortDate(e.start)} to ${e.end ? shortDate(e.end) : 'now'}, ${e.length} days` })) },
+        { label: 'Peak', r: true, get: (e) => h('div', { class: 'stackr' }, scoreChip(e.peak), h('div', { class: 'faint', style: 'font-size:11.5px', text: shortDate(e.peak_date) })) },
+        { label: 'Hottest at the peak', m: true, get: (e) => h('span', { class: 'dim', style: 'font-size:12.5px', text: euHot(d, e.hot) }) },
+        { label: 'Next Doom peak', r: true, get: (e) => (e.next_doom ? h('div', { class: 'stackr' }, scoreChip(e.next_doom.peak, doomColor), h('div', { class: 'faint', style: 'font-size:11.5px;font-family:var(--sans)', text: shortDate(e.next_doom.peak_date) + (e.next_doom.name ? `, ${e.next_doom.name}` : '') })) : 'not yet') },
+        { label: 'S&P 500, peak to peak', r: true, cls: (e) => (e.next_doom ? tone(e.next_doom.spx_peak_to_peak) : ''), get: (e) => (e.next_doom ? spct(e.next_doom.spx_peak_to_peak, 1) : '-') },
+        { label: 'Top to low', r: true, m: true, cls: () => 'down', get: (e) => (e.next_doom ? spct(e.next_doom.spx_top_to_low, 1) : '-') },
+        { label: 'Days between', r: true, m: true, get: (e) => (e.next_doom ? String(e.next_doom.days_after) : '-') }], cycRows),
+      past.length > 8 ? h('button', { class: 'btn', style: 'margin-top:10px', text: ST.allEu ? 'Show the last eight' : `Show all ${past.length}`, onclick: () => { ST.allEu = !ST.allEu; render(); } }) : null);
+    // 6. what followed each level
+    const lvCard = h('div', { class: 'card' }, ht('What followed each level'),
+      h('p', { class: 'dim', style: 'margin:0 0 10px;font-size:13.5px', text: 'The first day the score reached each level after 40 trading days below it, and the S&P 500 in the six months and the year after. High readings rarely end the run at once; they make the dips that do come more likely. Past results only, not a forecast.' }),
+      table([
+        { label: 'First reached', get: (x) => h('span', { style: x.now ? 'font-weight:600;color:var(--text)' : '', text: `${x.level}${x.now ? ' (today)' : ''}` }) },
+        { label: 'Times', r: true, get: (x) => String(x.count) },
+        { label: 'Dipped 5% or more in 6 months', r: true, get: (x) => `${x.dip5} of ${x.count}` },
+        { label: 'Dipped 10% or more', r: true, get: (x) => `${x.dip10} of ${x.count}` },
+        { label: 'Median deepest dip', r: true, cls: () => 'down', get: (x) => spct(x.median_drop, 1) },
+        { label: 'Worst', r: true, m: true, cls: () => 'down', get: (x) => `${spct(x.worst_drop, 1)} (${shortDate(x.worst_date)})` },
+        { label: 'Higher a year later', r: true, get: (x) => `${x.up_12m} of ${x.n_12m}` },
+        { label: 'Median year', r: true, m: true, cls: (x) => tone(x.median_12m), get: (x) => spct(x.median_12m, 1) }], d.levels || []));
+    // 7. every reading, today against past tops
+    const cell = (raw, score, col = euphColor) => h('div', { class: 'dcell' }, h('span', { text: raw }), isNum(score) ? scoreChip(score, col) : null);
+    const snaps = [now, ...d.marks];
+    const rows = [{ kind: 'total', name: 'Euphoria score' }];
+    for (const gr of d.groups) {
+      rows.push({ kind: 'group', key: gr.key, name: `${gr.name} (${Math.round(gr.weight * 100)}%)` });
+      d.components.filter((c) => c.group === gr.key).forEach((c) => rows.push({ kind: 'comp', c, name: c.name }));
+    }
+    rows.push({ kind: 'doom', name: 'Doom score that day' }, { kind: 'you', name: 'Your portfolio from its high (not scored)' });
+    const cols = [{ label: 'Reading', get: (r) => h('span', { class: r.kind === 'comp' ? 'dim' : '', style: r.kind === 'comp' ? 'padding-left:12px' : 'font-weight:600', text: r.name }) },
+      ...snaps.map((sn, k) => ({ label: k === 0 ? 'Today' : `${sn.name}, ${shortDate(sn.date)}`, r: true, get: (r) => {
+        if (r.kind === 'total') return cell('', sn.score);
+        if (r.kind === 'group') return cell('', sn.groups[r.key]);
+        if (r.kind === 'doom') return cell('', sn.doom, doomColor);
+        if (r.kind === 'you') return isNum(sn.you_dd) ? spct(sn.you_dd, 1) : '-';
+        const x = sn.components[r.c.key] || {};
+        return cell(euRaw(r.c.unit, x.raw, r.c.unit === 'pe' ? sn.pe[r.c.key === 'spx_pe' ? 'spx' : 'ndx'] : null), x.score);
+      } }))];
+    const cmpCard = h('div', { class: 'card' }, ht('Every reading, today against past tops'),
+      h('p', { class: 'dim', style: 'margin:0 0 10px;font-size:13.5px', text: 'Each cell is the reading and its 0 to 100 greed score. P/E rows show the estimated P/E and how far it sits from its own 10-year median.' }),
+      (() => { const t = table(cols, rows); t.classList.add('dtable'); return t; })());
+    const how = h('div', { class: 'card' }, h('h2', { text: 'How the score works' }),
+      h('p', { class: 'dim', style: 'font-size:13.5px;margin:0 0 8px', text: 'Thirteen readings, each turned into 0 to 100 where 100 is the most greed. CNN Fear & Greed and Crypto Fear & Greed are already 0 to 100. Every other reading is ranked against every trading day since 2010: a VIX lower than on 89% of those days scores 89. Readings are averaged inside their group, and the groups are weighted Greed 40%, Price heat 30%, Valuation 15%, Crypto 15%, as in the Doom score.' }),
+      h('p', { class: 'dim', style: 'font-size:13.5px;margin:0 0 8px', text: 'Greed: CNN Fear & Greed, the VIX, the VIX against the 3-month VIX, the put/call ratio and the junk bond spread (low readings mean calm, few hedges and easy credit). Price heat: the S&P 500 and Nasdaq-100 against their 200-day averages, the S&P 500 one-year return, and how many of the last 21 trading days closed at a new 52-week high. Valuation: S&P 500 and Nasdaq-100 P/E against their 10-year medians. Crypto: Crypto Fear & Greed and Bitcoin against its 200-day average.' }),
+      h('p', { class: 'dim', style: 'font-size:13.5px;margin:0 0 8px', text: 'Both scores come from the same data, so they move close to mirror images. Near a high the Doom score’s price readings all sit near the bottom of their range, calm market or manic one; this score swaps them for readings that keep climbing in a melt-up, so it can tell the two apart.' }),
+      h('p', { class: 'faint', style: 'font-size:12.5px;margin:0', text: 'Your highs come from your time-weighted return, so deposits and withdrawals do not count. Sources: the Doom score’s (Yahoo, CNN, alternative.me, multpl.com, worldperatio.com), refreshed with it.' }));
+    fill(body, top, h('div', { class: 'block grid g2 stack' }, cycCard, hsCard), h('div', { class: 'block' }, histCard), h('div', { class: 'block' }, topsCard),
+      h('div', { class: 'block' }, cycTable), h('div', { class: 'block' }, lvCard), h('div', { class: 'block' }, cmpCard), h('div', { class: 'block' }, how));
+    const dates = hsr.dates.slice(i0), vals = hsr.score.slice(i0), dv = hsr.doom.slice(i0), spx = hsr.spx.slice(i0);
+    requestAnimationFrame(() => lineChart(chartBox, { dates, series: [{ name: 'Euphoria score', color: 'var(--s-euph)', values: vals }, { name: 'Doom score', color: 'var(--s-doom)', values: dv, width: 1.2, opacity: 0.45 }],
+      yrange: [0, 100], yfmt: (v) => v.toFixed(0), fmt: (v) => (isNum(v) ? v.toFixed(0) : '-'), height: 280, label: 'Euphoria score over time',
+      bands: [{ lo: 80, hi: 100, fill: 'rgba(69,201,166,0.10)' }], refs: [{ y: now.score }], titleFmt: (dd) => longDate(dd),
+      extraTip: (i) => [{ label: 'S&P 500', value: isNum(spx[i]) ? spx[i].toLocaleString('en-US', { maximumFractionDigits: 0 }) : '-' }],
+      markers: tops.filter((t) => t.date >= dates[0]).map((t) => ({ date: t.date, value: t.score, color: 'var(--gold)', label: 'Your high, euphoria', text: t.score.toFixed(0) })) }));
   }
 
   // ---- moves: decisions you log, then and now --------------------------------------------------------------
@@ -3292,7 +3676,7 @@
           const b = e.currentTarget; b.disabled = true; b.setAttribute('aria-checked', String(!on)); b.lastChild.textContent = on ? 'Off' : 'On';
           try {
             await api('/api/account/hide', { json: { id: a.id, hidden: on } });
-            ST.dip = ST.moves = ST.doomFull = ST.doomBrief = ST.intra = null;     // pages built from the old total
+            ST.dip = ST.moves = ST.doomFull = ST.doomBrief = ST.euphFull = ST.euphBrief = ST.intra = null;     // pages built from the old total
             await refresh();
           }
           catch (er) { b.disabled = false; b.setAttribute('aria-checked', String(on)); b.lastChild.textContent = on ? 'On' : 'Off'; alert(er.message); }
@@ -3510,7 +3894,7 @@
   }
   function openMore() {
     openSheet(h('h2', { text: 'More' }), h('div', { class: 'more-list' },
-      [['/analysis', 'Analysis'], ['/market', 'Market'], ['/risk', 'Margin'], ['/assets', 'Assets dashboard'], ['/doom', 'Doom dashboard'], ['/activity', 'Activity'], ['/settings', 'Data and settings'], ['/customize', 'Customize']].map(([href, t]) => h('a', { href, text: t }))));
+      [['/analysis', 'Analysis'], ['/market', 'Market'], ['/risk', 'Margin'], ['/assets', 'Assets dashboard'], ['/doom', 'Doom dashboard'], ['/euphoria', 'Euphoria dashboard'], ['/activity', 'Activity'], ['/settings', 'Data and settings'], ['/customize', 'Customize']].map(([href, t]) => h('a', { href, text: t }))));
   }
   async function openSymbol(sym) {
     openSheet(h('div', { class: 'loading', text: 'Loading ' + sym }));

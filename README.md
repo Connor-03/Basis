@@ -8,6 +8,9 @@ through SnapTrade with read-only access, and measures everything the way Connor 
 - **Buy when the market is afraid.** A Doom score from 0 to 100 reads fear, price damage, valuation and crypto every
   trading day since 2010, tracks doom cycles from start to peak to calm, and ranks your stocks for dip buys while one
   is on.
+- **Rein in when the market is greedy.** A Euphoria score, the Doom score's mirror, reads greed on the same days and
+  lines today up against past market tops and your own highs. A war chest and a liquidation line show what you could
+  put to work in the next crash and how far the market would have to fall before a margin call.
 - **Count what you own, not just what it is worth.** Asset units move only when you buy or sell, and Glory Days Net
   Worth shows what your net worth would be if today's holdings went back to the prices of your all-time-high day.
 - **Know your leverage.** A margin buffer estimate at live prices and a leverage multiple that leaves retirement
@@ -59,7 +62,8 @@ folder yourself.
   counted as one trade until they are sold.
 - Analysis: Sharpe, drawdown, diversification, and letter grades.
 - Market: S&P 500 and Nasdaq-100 valuation, M2, the Doom score and its history.
-- The Doom dashboard and the Assets dashboard.
+- The Doom dashboard with your war chest and liquidation line, the Euphoria dashboard, and the Assets dashboard.
+- Wealth rank: where your balance ranks among SnapTrade members, from SnapTrade's own monthly figure.
 - A button that hides every dollar amount and leaves the percentages, for showing someone your screen.
 - A switch per account (Data and settings, Accounts) that leaves it out of every page as if it did not exist, while it
   keeps syncing in the background.

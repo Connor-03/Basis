@@ -22,7 +22,7 @@ sys.path.insert(0, HERE)
 from fin import paths  # noqa: E402
 
 paths.ensure()
-from fin import agent, analytics, dip, doom, imports, intraday, m2, macro, market, moves, options, push, reconcile, snaptrade, sync, update, valuation, wheel  # noqa: E402
+from fin import agent, analytics, dip, doom, euphoria, imports, intraday, m2, macro, market, moves, options, push, reconcile, snaptrade, sync, update, valuation, warchest, wheel  # noqa: E402
 from fin.db import DB  # noqa: E402
 
 DESKTOP = paths.MODE == 'desktop'
@@ -214,6 +214,13 @@ def worker():
                 except Exception as e:
                     log('snaptrade sync:', e)
             update.check(db.setting('update', {}) or {})
+            if st['registered'] and now - STATE.get('rank_at', 0) > 12 * 3600 and db.one('SELECT snap_id FROM snap_accounts LIMIT 1'):
+                STATE['rank_at'] = now
+                try:
+                    wealth_rank()
+                except Exception as e:
+                    STATE['rank_at'] = now - 11 * 3600         # try again in an hour
+                    log('wealth rank:', e)
             if now - STATE.get('val_at', 0) > 20 * 3600 or (et.hour == 17 and now - STATE.get('val_at', 0) > 3 * 3600):
                 STATE['val_at'] = now
                 try:
@@ -232,6 +239,7 @@ def worker():
                 try:
                     doom.refresh(db, sync.YH, log=log)
                     doom.refresh_hilo(db, sync.YH, log=log)
+                    warchest.refresh_old(db, sync.YH, log=log)
                     build_doom()
                 except Exception as e:
                     log('doom:', e)
@@ -333,12 +341,18 @@ def dip_state():
     spx = [(r['d'], r['value']) for r in db.q("SELECT d, value FROM macro_daily WHERE series='spx' AND d>=? ORDER BY d",
                                                ((date.today() - timedelta(days=400)).isoformat(),))]
     rows = dip.analyze(db, m, sync.cached_quotes(db), watch, spx)
+    try:
+        chest = warchest.summary(db, m, doom.compute(db), personal_series(m))
+    except Exception as e:
+        log('war chest:', e)
+        traceback.print_exc()
+        chest = None
     mg = (m.get('margin') or [None])[0] or {}
     fresh = db.one("SELECT MAX(at) AS at FROM fundamentals WHERE kind='summary'") if rows else None
     out = {'active': bool(cur), 'score': (d.get('now') or {}).get('score'), 'label': (d.get('now') or {}).get('label'),
            'cycle': cyc, 'rows': rows, 'watch': watch, 'doom_watch': doom_watch(),
            'margin': {'buffer': mg.get('excess'), 'debt': mg.get('debt'), 'crypto': mg.get('crypto')} if mg else None,
-           'updated': (fresh or {}).get('at'), 'weights': dip.WEIGHTS}
+           'updated': (fresh or {}).get('at'), 'weights': dip.WEIGHTS, 'warchest': chest}
     STATE['dip'] = {'key': key, 'at': time.time(), 'd': out}
     return out
 
@@ -353,12 +367,38 @@ def moves_state():
     return moves.summary(db, model(), STATE.get('doom') or {}, sync.cached_quotes(db))
 
 
+def personal_series(m):
+    """Your time-weighted index and leverage by day, for the 'your portfolio' rows of the Doom and Euphoria pages."""
+    perf, hist = m.get('performance') or {}, m.get('history') or {}
+    if not perf.get('index') or len(perf['index']) != len(hist.get('dates') or []):
+        return None
+    lev = [((v + ln) / v) if v and v > 0 else None for v, ln in zip(hist['value'], hist['loan'])]
+    return {'dates': hist['dates'], 'index': perf['index'], 'leverage': lev}
+
+
 def build_doom():
     m = model()
-    perf, hist = m.get('performance') or {}, m.get('history') or {}
-    personal = {'dates': hist['dates'], 'index': perf['index']} if perf.get('index') and len(perf['index']) == len(hist.get('dates') or []) else None
+    personal = personal_series(m)
+    c = doom.compute(db)
     STATE['doom'] = doom.summary(db, personal)
     STATE['doom_built'] = time.time()
+    try:
+        STATE['euphoria'] = euphoria.summary(db, personal, c)
+    except Exception as e:
+        log('euphoria summary:', e)
+
+
+def wealth_rank():
+    """SnapTrade's own wealth rank (its 'AUM percentile', worked out once a month): every reading is kept."""
+    r = snaptrade.Client().request('GET', '/aumPercentile')
+    r = (r.get('data') if isinstance(r, dict) else None) or {}
+    if r.get('percentile') is None or not r.get('as_of'):     # none yet: SnapTrade works it out on the 1st of each month
+        return
+    keep = db.setting('wealth_rank', {}) or {}
+    keep.setdefault('readings', {})[r['as_of']] = {k: r.get(k) for k in ('percentile', 'bucket', 'cohort_size', 'cohort_member_count', 'currency')}
+    keep['checked'] = datetime.now().isoformat(timespec='seconds')
+    db.set_setting('wealth_rank', keep)
+    bump()
 
 
 def build_intraday(rng):
@@ -656,7 +696,7 @@ class H(BaseHTTPRequestHandler):
         if p != '/api/status':
             STATE['seen'] = time.time()                 # the launcher reads this to tell an open window from a closed one
         try:
-            if p == '/' or p in ('/positions', '/income', '/analysis', '/risk', '/options', '/activity', '/settings', '/market', '/doom', '/assets', '/customize'):
+            if p == '/' or p in ('/positions', '/income', '/analysis', '/risk', '/options', '/activity', '/settings', '/market', '/doom', '/euphoria', '/assets', '/customize'):
                 return self._file('index.html')
             if p == '/recover':
                 return self._file('recover.html')
@@ -751,6 +791,19 @@ class H(BaseHTTPRequestHandler):
                     d = {k: v for k, v in d.items() if k not in ('history', 'episodes', 'peaks', 'cycle')}
                     d['cycle'] = {'rules': cyc.get('rules'), 'current': {k: v for k, v in cur.items() if k != 'path'} if cur else None}
                 return self._send(200, d)
+            if p == '/api/euphoria':
+                if not STATE.get('euphoria'):
+                    try:
+                        build_doom()
+                    except Exception as e:
+                        log('euphoria summary:', e)
+                d = STATE.get('euphoria') or {'error': 'The euphoria score data is still loading.'}
+                if qs.get('brief') and 'history' in d:
+                    cyc = d.get('cycle') or {}
+                    cur = cyc.get('current')
+                    d = {'now': d['now'], 'marks': d['marks'], 'groups': d['groups'], 'bands': d['bands'],
+                         'cycle': {'rules': cyc.get('rules'), 'current': {k: v for k, v in cur.items() if k != 'path'} if cur else None}}
+                return self._send(200, d)
             if p == '/api/snaptrade':
                 return self._send(200, snap_state())
             if p == '/api/status':
@@ -816,6 +869,9 @@ def slim(m):
     # accounts SnapTrade is still gathering history for: their holdings show from today until it is done
     out['snap_loading'] = [r['name'] for r in db.q('SELECT name, id FROM accounts WHERE NOT hidden AND id IN (SELECT account_id FROM snap_accounts)')
                            if snaptrade.still_loading(db, r['id'])]
+    wr = db.setting('wealth_rank', {}) or {}
+    if wr.get('readings'):
+        out['wealth_rank'] = {'readings': [{'as_of': d, **v} for d, v in sorted(wr['readings'].items())], 'checked': wr.get('checked')}
 
     return out
 
@@ -962,7 +1018,7 @@ def post_action(p, b):
         STATE.pop('intra', None)
         STATE['intra_at_1d'] = STATE['intra_at_5d'] = 0
         db.x('DELETE FROM live_points')
-        STATE['doom'] = None                    # its "your portfolio" rows come from the model: built again on the next visit
+        STATE['doom'] = STATE['euphoria'] = None    # their "your portfolio" rows come from the model: built again on the next visit
         return {'id': aid, 'hidden': hide}
     if p == '/api/account/delete':
         aid = int(b['id'])

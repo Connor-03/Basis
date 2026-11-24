@@ -33,6 +33,8 @@ data in the background.
 | `fin/wheel.py` | Wheel trades: an assigned put, the contracts sold on its shares and the shares themselves, as one trade; the Selling options switch |
 | `fin/doom.py` | The Doom score, its cycles, each day's highest and lowest reading |
 | `fin/dip.py` | The Doom dashboard's dip ranking per stock |
+| `fin/warchest.py` | The Doom dashboard's war chest and liquidation line, against past crashes back to 1987 |
+| `fin/euphoria.py` | The Euphoria score (the Doom score's mirror), its cycles, and your own highs against it |
 | `fin/valuation.py` | Index P/E and CAPE for the Market page |
 | `fin/m2.py` | M2 money supply from the Federal Reserve's H.6 release |
 | `fin/macro.py` | FOMC meeting dates |
@@ -56,7 +58,7 @@ data in the background.
    rows whenever data changes.
 3. `analytics.build` adds prices and produces one JSON model. The page fetches it from `/api/model`.
 4. The worker in `server.py` refreshes quotes (every 30 seconds in market hours), daily history, dividends, the Doom
-   score, valuation and M2 on their own schedules.
+   score, valuation, M2 and the wealth rank on their own schedules.
 
 The first time an account is linked, `reconcile.setup` compares the replayed share counts with the broker's and
 records what the history cannot explain: shares held before the history starts become opening holdings, and shares

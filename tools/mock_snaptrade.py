@@ -66,6 +66,8 @@ class H(BaseHTTPRequestHandler):
                                           'masked_account_number': a['number'], 'institution_name': DEMO['brokerage'], 'raw_type': a['raw_type'],
                                           'cash_or_margin': a['cash_or_margin'], 'kind': 'investment', 'status': 'open',
                                           'sync_status': {'holdings': {'initial_sync_completed': True}}} for a in DEMO['accounts']]})
+        if p == '/aumPercentile':
+            return self.out({'data': {'percentile': 62, 'bucket': 31, 'cohort_size': 48, 'cohort_member_count': 1000, 'currency': 'USD', 'as_of': '2026-11-01'}})
         parts = p.strip('/').split('/')
         if len(parts) >= 3 and parts[0] == 'accounts':
             acct = next((a for a in DEMO['accounts'] if a['id'] == parts[1]), None)
