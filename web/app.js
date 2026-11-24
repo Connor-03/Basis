@@ -2907,7 +2907,11 @@
       return h('button', { type: 'button', class: 'acsw', role: 'switch', 'aria-checked': String(on), 'aria-label': `Count ${a.name} in Basis`,
         title: on ? 'Counted everywhere. Click to leave it out.' : 'Left out of every page. Click to count it again.', onclick: async (e) => {
           const b = e.currentTarget; b.disabled = true; b.setAttribute('aria-checked', String(!on)); b.lastChild.textContent = on ? 'Off' : 'On';
-          try { await api('/api/account/hide', { json: { id: a.id, hidden: on } }); await refresh(); }
+          try {
+            await api('/api/account/hide', { json: { id: a.id, hidden: on } });
+            ST.dip = ST.moves = ST.doomFull = ST.doomBrief = ST.intra = null;     // pages built from the old total
+            await refresh();
+          }
           catch (er) { b.disabled = false; b.setAttribute('aria-checked', String(on)); b.lastChild.textContent = on ? 'On' : 'Off'; alert(er.message); }
         } }, h('i'), h('span', { text: on ? 'On' : 'Off' }));
     };

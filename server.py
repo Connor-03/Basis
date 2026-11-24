@@ -952,6 +952,7 @@ def post_action(p, b):
         STATE.pop('intra', None)
         STATE['intra_at_1d'] = STATE['intra_at_5d'] = 0
         db.x('DELETE FROM live_points')
+        STATE['doom'] = None                    # its "your portfolio" rows come from the model: built again on the next visit
         return {'id': aid, 'hidden': hide}
     if p == '/api/account/delete':
         aid = int(b['id'])
