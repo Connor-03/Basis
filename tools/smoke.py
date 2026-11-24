@@ -182,6 +182,12 @@ def main():
         code, m3 = call('/api/model', timeout=90)
         ok(code == 200 and len(m3['accounts']) == 3 and len(m3['positions']) == len(m['positions']) and not m3['hidden_accounts'],
            'every account and holding is back')
+        # selling options starts off; on adds the weekly menu, wheel trades and projected premium, and it switches back
+        ok(not m3['sells_options'] and not m3['income']['next12']['options_pace'], 'selling options starts off, with no premium projected')
+        code, w = call('/api/wheel', timeout=90)
+        ok(code == 200 and isinstance(w.get('trades'), list) and 'closed' in w, f"wheel trades are worked out ({len(w.get('trades') or [])})")
+        ok(call('/api/sells-options', {'on': True})[0] == 200 and call('/api/model', timeout=90)[1]['sells_options'], 'selling options switches on')
+        ok(call('/api/sells-options', {'on': False})[0] == 200 and not call('/api/model', timeout=90)[1]['sells_options'], 'and back off')
         # an update, with a file the user changed
         with open(os.path.join(app, 'README.md'), 'a', encoding='utf-8') as f:
             f.write('\nmy own note\n')

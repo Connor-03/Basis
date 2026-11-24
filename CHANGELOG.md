@@ -1,5 +1,14 @@
 # Changes
 
+## 1.0.5
+
+- **Options dashboard.** The Options page is one dashboard now: open contracts, this week's menu, and every contract you've closed by month, by how it ended and by stock (that part moved over from Analysis).
+- **Wheel trades.** Your broker counts an assigned put's premium as profit, even when the shares it hands you are worth less. Wheel trades follow those shares to the end: the put, the calls you sold on them, dividends, and what the shares did until they're sold or called away.
+- **Selling options switch.** Data and settings, Settings, Selling options. Off by default. Turn it on if you sell covered calls or cash-secured puts to get the weekly menu, wheel trades, and your premium in the income projection.
+- **Option income is premium only.** Income counts what selling contracts brought in. Contracts you buy and sell again are trading, like stock sales, and live in the Options record.
+- **Settings, in order.** Data and settings goes settings first, then accounts, then your data, with buttons up top to jump around. Brokerage syncs no longer flood the uploads list, and long lists show a few rows until you open them.
+- **Phone guide.** Only shows on a copy you run on a home server, now with steps for iPhone and Android.
+
 ## 1.0.4
 
 - **Account switches.** Turn any account off in Data and settings, Accounts, and Basis acts like it isn't there. It keeps syncing in the background, so turning it back on brings it straight back.

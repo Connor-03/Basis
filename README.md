@@ -52,8 +52,11 @@ folder yourself.
   deposits.
 - Positions with cost basis (FIFO lots), gain, weight, distance from all-time high, and return against M2.
 - A margin page: maintenance estimate per holding, buffer, what drop triggers a call, loan rate against M2.
-- Income: dividends received and projected, option premium, interest.
-- A weekly options menu: covered calls on 100-share lots and cash-secured puts, by rules you set.
+- Income: dividends received and projected, interest, and the premium from contracts you sell.
+- An Options dashboard: your open contracts and every contract you have closed, by month, by how it ended and by
+  stock. Turn on Selling options (Data and settings) and it adds a weekly menu of covered calls and cash-secured puts
+  by rules you set, plus wheel trades: a put that assigned you shares, the calls sold on them and what the shares did,
+  counted as one trade until they are sold.
 - Analysis: Sharpe, drawdown, diversification, and letter grades.
 - Market: S&P 500 and Nasdaq-100 valuation, M2, the Doom score and its history.
 - The Doom dashboard and the Assets dashboard.

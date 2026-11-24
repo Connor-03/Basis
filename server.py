@@ -22,7 +22,7 @@ sys.path.insert(0, HERE)
 from fin import paths  # noqa: E402
 
 paths.ensure()
-from fin import agent, analytics, dip, doom, imports, intraday, m2, macro, market, moves, options, push, reconcile, snaptrade, sync, update, valuation  # noqa: E402
+from fin import agent, analytics, dip, doom, imports, intraday, m2, macro, market, moves, options, push, reconcile, snaptrade, sync, update, valuation, wheel  # noqa: E402
 from fin.db import DB  # noqa: E402
 
 DESKTOP = paths.MODE == 'desktop'
@@ -102,6 +102,14 @@ def menu(force=False):
     STATE['menu'] = MENU.build(m, q, prices, rules)
     STATE['menu_at'] = time.time()
     return STATE['menu']
+
+
+def wheel_trades():
+    """Wheel trades from the current model (fin/wheel.py), rebuilt when the model is."""
+    m = model(stale_ok=True)
+    if STATE.get('wheel_for') is not m:
+        STATE['wheel'], STATE['wheel_for'] = wheel.build(db, m), m
+    return STATE['wheel']
 
 
 # ---- background market data ----------------------------------------------------------------------------------------
@@ -271,7 +279,7 @@ def alerts(m, session, et):
     # Monday (or the first trading day of the week) after 9:45: the options menu
     minutes = et.hour * 60 + et.minute
     week = '%d-W%02d' % et.isocalendar()[:2]
-    if cfg['monday_menu'] and et.weekday() <= 1 and minutes >= 9 * 60 + 45 and \
+    if cfg['monday_menu'] and m.get('sells_options') and et.weekday() <= 1 and minutes >= 9 * 60 + 45 and \
             not db.one('SELECT key FROM push_sent WHERE key=?', ('menu:' + week,)):
         mn = menu(force=True)
         puts = [f"{r['symbol']} {r['strike']:g}P {r['return_pct'] * 100:.1f}%" for r in mn['puts'] if r.get('meets_target')][:3]
@@ -677,6 +685,8 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, slim(m))
             if p == '/api/options':
                 return self._send(200, menu(force=qs.get('refresh') == '1'))
+            if p == '/api/wheel':
+                return self._send(200, wheel_trades())
             if p == '/api/activity':
                 return self._send(200, activity(qs))
             if p == '/api/symbol':
@@ -1281,6 +1291,12 @@ def post_action(p, b):
         db.set_setting('option_rules', cur)
         STATE['menu'] = None
         return {'ok': True}
+    if p == '/api/sells-options':
+        on = b.get('on')
+        db.set_setting('sells_options', None if on is None else bool(on))
+        db.log('selling options turned ' + ('on' if on else 'off'))
+        bump()
+        return {'on': on}
     raise ValueError('unknown action')
 
 

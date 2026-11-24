@@ -15,6 +15,7 @@ from . import snaptrade
 from .m2 import M2
 from .engine import Replay
 from .imports import account_events
+from .wheel import sells_options
 
 BENCH = ['VOO', 'QQQM']
 EXTRA = ['^IRX', 'BTC-USD']
@@ -387,7 +388,8 @@ def build(db, quotes, today=None, pending=True, hidden=False):
             if cand and cand > high:
                 high, d = cand, today
         p['ath'], p['ath_date'], p['from_ath'] = high, d, p['price'] / high - 1
-    income = _income(db, out_accounts, positions, today)
+    selling, selling_set = sells_options(db, out_accounts, today)
+    income = _income(db, out_accounts, positions, today, selling)
     for p in positions:
         inc = income['by_symbol'].get(p['symbol']) or {}
         p['income'] = inc.get('annual') or 0
@@ -461,6 +463,7 @@ def build(db, quotes, today=None, pending=True, hidden=False):
         'accounts': [{k: v for k, v in acct.items() if k not in ('positions', 'replay')} for acct in out_accounts],
         'positions': positions, 'manual': manual_rows, 'history': hist, 'performance': perf, 'income': income,
         'diversification': divers, 'margin': margin, 'grades': grades, 'grade_rules': GRADE_RULES,
+        'sells_options': selling, 'sells_options_set': selling_set,
         'gaps': gaps, 'options': options, 'costs': costs, 'share_counts': shares, 'extended': extended, 'transit': transit,
         'symbols_needed': sorted(s for s in all_syms if s),
         'opening_count': sum(len(db.q('SELECT id FROM opening WHERE account_id=?', (a['id'],))) for a in accounts),
@@ -1247,8 +1250,10 @@ def _risk_stats(rets, prices, rdates):
             'rf': _mean(rf) * TRADING_DAYS if rf else None}
 
 
-def _income(db, accounts, positions, today):
-    """Received income from the statements, and the coming 12 months projected from each holding's own payments."""
+def _income(db, accounts, positions, today, selling=True):
+    """Received income from the statements, and the coming 12 months projected from each holding's own payments.
+    Options income is what selling contracts brought in (covered calls, cash-secured puts); contracts bought and sold
+    again are trading, like stock sales, and stay out. selling=False (the switch in Settings is off) projects none."""
     t = date.fromisoformat(today)
     received = defaultdict(lambda: defaultdict(float))
     rows = []
@@ -1258,7 +1263,8 @@ def _income(db, accounts, positions, today):
             received[m][r['sub']] += r['amount']
             rows.append({**r, 'account': a['name']})
         for r in a['opt_realized']:
-            received[r['date'][:7]]['options'] += r['pnl']
+            if r.get('short'):
+                received[r['date'][:7]]['options'] += r['pnl']
         for r in a['expense_rows']:
             received[r['date'][:7]][r['sub']] += r['amount']
     months = sorted(received)
@@ -1346,6 +1352,8 @@ def _income(db, accounts, positions, today):
             key = 'dividends' if r['sub'] in ('dividend', 'dividend_in_lieu', 'return_of_capital', 'cash_in_lieu') else 'other'
             years[r['date'][:4]][key] += r['amount']
         for r in a['opt_realized']:
+            if not r.get('short'):
+                continue
             years[r['date'][:4]]['options'] += r['pnl']
             if r['date'] > yr_ago:
                 opt_ttm += r['pnl']
@@ -1354,6 +1362,9 @@ def _income(db, accounts, positions, today):
                 years[r['date'][:4]]['interest'] += r['amount']
                 if r['date'] > yr_ago:
                     int_ttm += r['amount']
+    opt_ttm_seen = opt_ttm
+    if not selling:
+        opt_ttm = 0.0
     growth_w = (sum(v['annual'] * v['growth'] for v in by_symbol.values()) / annual) if annual else 0.0
     # interest ahead: today's loans at their implied rates (falls back to the last 12 months)
     ahead = [a['margin']['interest_year'] for a in accounts if a.get('margin') and a['margin'].get('interest_year')]
@@ -1375,7 +1386,8 @@ def _income(db, accounts, positions, today):
                         'interest': round(int_year, 2), 'other': 0.0, 'net': round(d + opt_ttm + int_year, 2)})
     rates = [a['margin']['rate'] for a in accounts if a.get('margin') and a['margin'].get('rate')]
     next12 = {'dividends': annual, 'options_pace': opt_ttm, 'interest': int_year, 'interest_ttm': int_ttm,
-              'net': annual + opt_ttm + int_year, 'dividend_growth': growth_w, 'margin_rate': rates[0] if rates else None}
+              'net': annual + opt_ttm + int_year, 'dividend_growth': growth_w, 'margin_rate': rates[0] if rates else None,
+              'selling': selling, 'options_ttm': opt_ttm_seen}
     return {'annual': annual, 'monthly': annual / 12, 'by_symbol': by_symbol, 'upcoming': upcoming[:60],
             'by_year': by_year, 'next12': next12,
             'calendar': cal_months, 'received_by_month': by_month, 'received_rows': sorted(rows, key=lambda r: r['date'], reverse=True)[:300],
@@ -1555,22 +1567,42 @@ def _grades(perf, divers, margin, costs, value):
 
 def _options_summary(accounts, today):
     t = date.fromisoformat(today)
+    yr_ago = (t - timedelta(days=365)).isoformat()
     rows = [r for a in accounts for r in a['opt_realized']]
-    by_month = defaultdict(lambda: {'premium': 0.0, 'pnl': 0.0, 'n': 0})
+    by_month = defaultdict(lambda: {'premium': 0.0, 'pnl': 0.0, 'n': 0, 'sold': 0.0, 'bought': 0.0})
     wins = sum(1 for r in rows if r['pnl'] > 0)
+    by_und = defaultdict(lambda: {'pnl': 0.0, 'sold': 0.0, 'bought': 0.0, 'n': 0.0})
+    kinds = {k: {'pnl': 0.0, 'n': 0.0} for k in ('calls', 'puts', 'bought')}
+    outcomes = {k: {'pnl': 0.0, 'n': 0.0} for k in ('expired', 'bought back', 'assigned')}
     for r in rows:
+        right = r.get('right') or (r['key'].split(' ')[2] if r['key'].count(' ') >= 3 else '')
+        side = 'sold' if r.get('short') else 'bought'
         m = by_month[r['date'][:7]]
         m['pnl'] += r['pnl']
         m['n'] += 1
+        m[side] += r['pnl']
+        u = by_und[r['underlying'].rstrip('0123456789') or r['underlying']]
+        u['pnl'] += r['pnl']
+        u[side] += r['pnl']
+        u['n'] += r['qty'] or 0
+        k = kinds['bought' if not r.get('short') else 'calls' if right == 'C' else 'puts']
+        k['pnl'] += r['pnl']
+        k['n'] += r['qty'] or 0
+        if r.get('short'):
+            how = 'assigned' if 'assign' in r['how'] or r['how'] == 'exercised' else \
+                'expired' if r['how'] == 'expired' else 'bought back'
+            outcomes[how]['pnl'] += r['pnl']
+            outcomes[how]['n'] += r['qty'] or 0
     short = [r for r in rows if r.get('short')]
     long_ = [r for r in rows if not r.get('short')]
-    by_und = defaultdict(float)
-    for r in rows:
-        by_und[r['underlying'].rstrip('0123456789') or r['underlying']] += r['pnl']
     open_ = [o for a in accounts for o in a['options']]
     return {'realized': sum(r['pnl'] for r in rows), 'count': len(rows), 'win_rate': wins / len(rows) if rows else None,
             'short_pnl': sum(r['pnl'] for r in short), 'long_pnl': sum(r['pnl'] for r in long_),
             'short_count': len(short), 'long_count': len(long_),
+            'short_win_rate': sum(1 for r in short if r['pnl'] > 0) / len(short) if short else None,
+            'short_ttm': sum(r['pnl'] for r in short if r['date'] > yr_ago),
+            'short_ttm_n': sum(r['qty'] or 0 for r in short if r['date'] > yr_ago),
+            'kinds': kinds, 'outcomes': outcomes,
             'by_month': [{'month': k, **v} for k, v in sorted(by_month.items())],
-            'by_underlying': sorted(({'symbol': k, 'pnl': v} for k, v in by_und.items()), key=lambda x: -x['pnl']),
+            'by_underlying': sorted(({'symbol': k, **v} for k, v in by_und.items()), key=lambda x: -x['pnl']),
             'open': open_}

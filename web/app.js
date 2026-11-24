@@ -700,12 +700,34 @@
     'What each holding needs': ['Each holding’s maintenance: its value times its rate (your broker’s where you entered one, 25% for the rest, more for leveraged funds and stocks under $3). Alone, a call after: how far that one holding would have to fall, everything else unchanged, to use the whole buffer.'],
     'Line up the estimate': ['Enter the buffer your broker shows and Basis scales the estimated rates (the holdings without a rate of their own) until its buffer matches. Holdings with your broker’s rate entered keep it.'],
     'Positions': ['Every holding across your accounts. Cost basis is first in, first out by lot, the way Robinhood counts realized gains; shares a broker never showed being bought use its average cost, or show as unknown. vs M2 sets the value against what the cost would be if it had only kept up with the money supply since each buy. From high is the distance under the all-time high at the live price.'],
-    'Income by year': ['Dividends, option profit and loss, and margin interest for each year. This year is what came in so far plus the rest of the year projected; later years are projected from today’s holdings with each one’s own dividend growth, options at the last 12 months’ pace and interest on today’s loan.'],
+    'Income by year': [
+      'Dividends, option premium and margin interest for each year. Option income is what selling contracts brought in (covered calls and cash-secured puts). Contracts you bought and sold again are trading, like stock sales, so they are in the Options record instead.',
+      'This year is what came in so far plus the rest of the year projected. Later years are projected from today\u2019s holdings with each one\u2019s own dividend growth, interest on today\u2019s loan, and premium at the last 12 months\u2019 pace while selling options is on (Data and settings). With it off, no premium is projected.'],
     'Projected dividends by month': ['What today’s shares should pay in each of the next 12 months, from each holding’s dividend schedule at its current rate. Payments not declared yet are estimates.'],
     'Live prices': [
       'Basis gets stock prices from Yahoo Finance, live on weekdays from 4:00 AM to 8:00 PM Eastern: pre-market from 4:00, the regular session from 9:30 to 4:00, after hours until 8:00. Crypto is live around the clock.',
       'Outside that window stock prices stay at the last trade before 8:00 PM. Robinhood’s 24 Hour Market keeps trading overnight (Sunday 8 PM to Friday 8 PM Eastern), so your broker’s numbers can move while these stay put. The two line up again when pre-market opens at 4:00 AM.'],
     'Your margin rate': ['The yearly rate on the loan. Basis works it out from the last interest charge and the average loan in the 30 days before it, or uses the rate you enter.'],
+    Options: [
+      'Everything about your options on one page. This week\u2019s menu is the contracts to sell by Friday that pass your rules, beside what you have open now and the stocks skipped this week. Wheel trades follows shares a put assigned to you from start to finish. Below that is the record of every contract you have closed.',
+      'Selling options is on (Data and settings). Off, the page keeps your open contracts and the record, and option premium leaves your income projection.'],
+    'Options, selling off': [
+      'Every option contract in your linked accounts: the ones open now at today\u2019s quotes, and every one you have closed, by month, by kind and by stock.',
+      'Selling options is off. If you sell covered calls or cash-secured puts, turn it on in Data and settings (Settings, Selling options). This page then adds a menu of contracts to sell each week and wheel trades, which follow shares a put assigned to you to the end, and the premium you collect joins your income projection.'],
+    'Selling options': [
+      'On, the Options page adds a weekly menu of covered calls and cash-secured puts built from your rules, and wheel trades. The Monday menu alert starts, and the premium you collect is projected at the last 12 months\u2019 pace on the Income page. Off, all of that goes away. Contracts you already closed stay in the record either way.',
+      'It starts off. Switching it never changes your data.'],
+    'Open contracts': ['Each contract you hold now: when it expires, what you were paid to sell it (or paid to buy it), and its profit or loss if you closed it at today\u2019s quotes. The percent is how far the strike sits from the share price.'],
+    'Skip this week': ['Stocks the menu left out this week and why: earnings before Friday, shares already covered, a sharp drop in the last 5 days, no support level under the price, a falling knife, or a rule you set.'],
+    'Wheel trades': [
+      'A broker books an assigned put\u2019s premium as profit and shows the shares on their own, so a put that hands you shares worth less than the strike still looks like a win. A wheel trade counts it all as one. It starts when a put is assigned (or when you buy a block of exactly 100 shares, or 200 and so on, and sell calls on it within a week) and ends when those shares are sold or called away.',
+      'In between it takes in the calls sold on those shares, any puts sold on the same stock while it is open, and the dividends the shares were paid. Premium is what the contracts made, Shares is what they sold for minus what the trade paid, and Net is both plus dividends. Open trades count the shares at today\u2019s price and open contracts at what buying them back would cost now.',
+      'Only assigned shares and 100-share blocks belong to a trade, so shares you bought on your own stay out. Called-away shares and whole 100-share sales come out of the trade first; odd-lot sales come out of your other shares first. When a call covers more shares than the trade holds, only the trade\u2019s part of its premium counts. Under water is the strike minus that day\u2019s closing price, for each assignment.'],
+    'Closed contracts by month': ['Profit or loss of every contract that closed in each month, by the day it closed: expired, bought back, sold or assigned. Hover a bar for the selling and buying parts.'],
+    'How sold contracts ended': ['Every contract you sold, by how it ended. Expired worthless kept the whole premium. Bought back is the premium less what closing it cost. Assigned is the premium only; Wheel trades follows the shares it moved.'],
+    'By kind': ['Calls sold are covered calls, puts sold are cash-secured puts, and bought is every contract you bought and later sold, let expire or exercised.'],
+    'Options by stock': ['Closed contracts for each stock: what selling made, what buying made, and the two together. Click a row for the stock.'],
+    'Options sold': ['Premium from contracts you sold, by the month each one closed: the whole premium when it expired, less the cost when you bought it back. Contracts you bought are left out.'],
   };
   function helpIcon(key) {
     return HELP[key] ? h('button', { type: 'button', class: 'qhelp', 'data-help': key, 'aria-label': 'How this works', 'aria-expanded': 'false' }, '?') : null;
@@ -1388,10 +1410,10 @@
     const t = tier();
     const al = alerts(m);
     const hero = heroCard(m), chart = chartCard(m), assets = assetsCard(m), heat = heatmap(m), income = incomeCard(m), alloc = allocationCard(m);
-    const opts = optionsCard(), mkt = marketCard(), margin = marginCard(m), accts = accountsCard(m), movers = moversCard(m), coming = comingCard(m), recv = receivedCard(m);
+    const opts = m.sells_options ? optionsCard() : null, mkt = marketCard(), margin = marginCard(m), accts = accountsCard(m), movers = moversCard(m), coming = comingCard(m), recv = receivedCard(m);
     const doomc = doomCard();
     const col = (...k) => h('div', { class: 'col' }, ...k.filter(Boolean));
-    const pair = (a, b) => h('div', { class: 'pair' }, a, b);
+    const pair = (a, b) => (a && b ? h('div', { class: 'pair' }, a, b) : a || b);
     let cols;
     if (t === 1) cols = [col(...al, hero, chart, margin, assets, doomc, heat, income, alloc, opts, mkt, accts, movers, coming, recv)];
     else if (t === 2) cols = [col(...al, hero, chart, assets, heat, pair(income, alloc), pair(opts, mkt)), col(margin, doomc, accts, movers, coming, recv)];
@@ -1450,50 +1472,232 @@
       h('p', { class: 'note', text: 'Contracts past their date that your latest export has not closed yet are shown as expired (or probably assigned if they finished in the money). The next upload settles them.' }))));
   }
 
-  async function options(page, m) {
-    page.append(h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Options menu', helpIcon('Options menu')), h('p', { class: 'sub', text: 'Covered calls and cash-secured puts for this week, from live chains and your rules. No AI: the rules are listed in Data and settings.' })),
-      h('button', { class: 'btn', text: 'Refresh chains', onclick: async (e) => { e.target.disabled = true; e.target.textContent = 'Fetching'; ST.menu = await api('/api/options?refresh=1').catch((er) => ({ error: er.message })); render(); } })));
-    const body = h('div', {}, h('div', { class: 'loading', text: 'Reading option chains (a few seconds)' }));
-    page.append(body);
+  // ---- options: one dashboard. Selling on (Data and settings): this week's menu, open contracts, wheel trades and the
+  // record. Selling off (the default): open contracts and the record, with the (?) by the title saying where to turn it on.
+  const OPT_HOW = { expired: 'expired worthless', 'bought back': 'bought back', assigned: 'assigned', exercised: 'exercised', sold: 'sold' };
+  const optLabel = (key) => { const [, exp, r, k] = String(key || '').split(' '); return exp ? `${+k} ${r === 'C' ? 'call' : 'put'} ${shortDate(exp)}` : 'Contract'; };
+  const MARKET_STATE = { REGULAR: 'market open', PRE: 'pre-market', POST: 'after hours', POSTPOST: 'market closed', CLOSED: 'market closed', PREPRE: 'market closed' };
+  function sellSwitch(m) {
+    const on = !!m.sells_options;
+    return h('button', { type: 'button', class: 'acsw', role: 'switch', 'aria-checked': String(on), 'aria-label': 'I sell covered calls and cash-secured puts',
+      onclick: async (e) => {
+        const b = e.currentTarget; b.disabled = true; b.setAttribute('aria-checked', String(!on)); b.lastChild.textContent = on ? 'Off' : 'On';
+        try { await api('/api/sells-options', { json: { on: !on } }); ST.menu = ST.wheel = null; await load(true); render(); }
+        catch (er) { b.disabled = false; b.setAttribute('aria-checked', String(on)); b.lastChild.textContent = on ? 'On' : 'Off'; alert(er.message); }
+      } }, h('i'), h('span', { text: on ? 'On' : 'Off' }));
+  }
+  function sellCard(m) {
+    return card('Selling options',
+      h('div', { class: 'sellsw' }, h('p', { class: 'dim', text: 'Turn this on if you sell covered calls on lots of 100 shares or cash-secured puts with your cash. The Options page then adds a menu of contracts to sell each week and wheel trades (what shares a put assigned to you really made, start to finish), the Monday menu alert starts, and the premium you collect joins your income projection.' }), sellSwitch(m)));
+  }
+  // one labeled number in a strip of four
+  const mcell = (label, value, cls, note) => h('div', {}, h('span', { text: label }), h('b', { class: cls || '', text: value }), note ? h('em', { text: note }) : null);
+  // a list that shows its first rows until opened
+  function moreList(rows, n, make, what) {
+    const box = h('div', {});
+    const show = (all) => fill(box, make(all ? rows : rows.slice(0, n)), rows.length > n
+      ? h('button', { class: 'btn small morerows', text: all ? 'Show fewer' : `Show all ${rows.length} ${what}`, onclick: () => show(!all) }) : null);
+    show(false);
+    return box;
+  }
+  const fsub = (t) => h('div', { class: 'faint', style: 'font-size:12px', text: t });
+  function openList(rows) {
+    if (!rows.length) return h('p', { class: 'dim', style: 'margin:0;font-size:13.5px', text: 'Nothing open right now.' });
+    return h('div', { class: 'rows olist' }, rows.map((o) => h('div', { class: 'row' },
+      h('div', { class: 'l' }, h('div', { class: 'sym', text: `${o.underlying} ${o.strike} ${o.right === 'C' ? 'call' : 'put'}` }),
+        fsub(`${shortDate(o.expiry)}, ${o.qty < 0 ? 'sold' : 'bought'} ${qty(Math.abs(o.qty))} for ${money(Math.abs(o.cost), 0)}`)),
+      h('div', { class: 'r' }, h('div', { class: o.quoted ? tone(o.pnl) : 'faint', text: o.quoted ? smoney(o.pnl, 0) : 'no quote' }),
+        fsub(o.underlying_price ? `strike ${spct(o.strike / o.underlying_price - 1, 1)} from price` : '')))));
+  }
+
+  function options(page, m) {
+    const sell = !!m.sells_options, o = m.options || {}, k = o.kinds || {}, n = (x) => (x && x.n) || 0;
+    const open = (o.open || []).filter((x) => x.status === 'open');
+    const openPnl = open.reduce((a, x) => a + (x.quoted && isNum(x.pnl) ? x.pnl : 0), 0);
+    page.append(h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Options', helpIcon(sell ? 'Options' : 'Options, selling off')),
+        h('p', { class: 'sub', text: sell ? 'What to sell this week, what you have open, what assigned shares really made, and every contract you have closed.' : 'Every option contract in your accounts: what is open now and every one you have closed.' })),
+      sell ? h('button', { class: 'btn', text: 'Refresh chains', onclick: async (e) => { e.target.disabled = true; e.target.textContent = 'Fetching'; ST.menu = await api('/api/options?refresh=1').catch((er) => ({ error: er.message })); render(); } }) : null));
+    if (!sell && !o.count && !open.length) {
+      page.append(h('section', { class: 'block' }, card('Nothing here yet', h('p', { class: 'dim', style: 'margin:0', text: 'Option contracts you buy or sell show up here once your broker reports them: the ones open now at live quotes, and every one you close.' }))));
+      return;
+    }
+    const openTile = tile('Open contracts', open.length ? smoney(openPnl, 0) : 'None', open.length ? tone(openPnl) : '', open.length ? `${open.length} open, at today’s quotes` : 'nothing open right now');
+    const rec = optRecordParts(m);
+    if (!sell) {
+      const cut = new Date(); cut.setMonth(cut.getMonth() - 11);
+      const yr = (o.by_month || []).filter((r) => r.month >= cut.toISOString().slice(0, 7)).reduce((a, r) => a + r.pnl, 0);
+      page.append(h('div', { class: 'grid g4' }, openTile,
+        tile('All closed contracts', smoney(o.realized, 0), tone(o.realized), `${qty(o.count)} closed, ${pct(o.win_rate, 0)} at a profit`),
+        tile('Last 12 months', smoney(yr, 0), tone(yr), 'closed in that time'),
+        tile('Bought options', smoney(o.long_pnl, 0), tone(o.long_pnl), `${qty(n(k.bought))} contracts bought and closed`)));
+      page.append(h('div', { class: 'odash split' }, h('div', { class: 'col' }, rec ? rec.chart : card('Closed contracts by month', h('p', { class: 'dim', style: 'margin:0', text: 'None closed yet.' })), rec ? rec.byStock : null),
+        h('div', { class: 'col' }, card('Open contracts', openList(open)), rec ? rec.kind : null, rec ? rec.ended : null)));
+      return;
+    }
+    const wt = tile('Wheel trades, all in', '...', '', 'closed and open together');
+    page.append(h('div', { class: 'grid g4' },
+      tile('Premium, last 12 months', smoney(o.short_ttm, 0), tone(o.short_ttm), `${qty(o.short_ttm_n)} contracts sold`), wt, openTile,
+      tile('Kept a profit', pct(o.short_win_rate, 0), '', `of ${qty(n(k.calls) + n(k.puts))} contracts sold`)));
+    const menuBox = h('div', {}, h('div', { class: 'loading', text: 'Reading option chains (a few seconds)' }));
+    const skipBox = h('div', {}, h('div', { class: 'loading', text: 'Loading' }));
+    page.append(h('div', { class: 'odash split' }, h('div', { class: 'card' }, ht('This week’s menu', 'Options menu'), menuBox),
+      h('div', { class: 'col' }, card('Open contracts', openList(open)), card('Skip this week', skipBox))));
+    const wheelBox = h('div', {}, h('div', { class: 'loading', text: 'Putting each trade together' }));
+    page.append(h('section', { class: 'block' }, card('Wheel trades', wheelBox)));
+    if (rec) page.append(h('div', { class: 'odash split' }, h('div', { class: 'col' }, rec.chart, rec.byStock), h('div', { class: 'col' }, rec.ended, rec.kind)));
+    fillMenu(menuBox, skipBox);
+    fillWheel(wheelBox, wt, m);
+  }
+
+  async function fillMenu(box, skipBox) {
     if (!ST.menu) ST.menu = await api('/api/options').catch((e) => ({ error: e.message }));
     const mn = ST.menu;
-    if (ST.page !== 'options') return;
-    if (mn.error) { fill(body, h('div', { class: 'alert bad', text: mn.error })); return; }
+    if (!box.isConnected) return;
+    if (mn.error) { fill(box, h('div', { class: 'alert bad', text: mn.error })); fill(skipBox, h('p', { class: 'dim', style: 'margin:0', text: 'Not available.' })); return; }
     const cu = mn.cushion;
-    const top = h('div', { class: 'grid g4' },
-      tile('Expiry', shortDate(mn.expiry), '', `${{ REGULAR: 'market open', PRE: 'pre-market', POST: 'after hours', POSTPOST: 'market closed', CLOSED: 'market closed', PREPRE: 'market closed' }[mn.market] || mn.market}`),
-      tile('Target', `${mn.target[0]}-${mn.target[1]}% a week`, '', 'premium as a share of the cash or shares held'),
-      tile('Margin cushion', cu ? money(cu.excess, 0) : '-', cu ? tone(cu.excess) : '', cu ? 'estimate: equity minus maintenance' : ''),
-      tile(cu && cu.symbol ? `10% ${cu.symbol} move` : '10% move', cu && isNum(cu.ten_pct) ? money(cu.ten_pct, 0) : '-', '', 'change in cushion'));
     const kindTag = (r) => h('span', { class: 'tag ' + (r.premium_kind === 'quote' ? '' : 'est'), text: r.premium_kind });
-    const optCols = (withLoss) => [
-      { label: 'Ticker', get: (r) => h('span', { class: 'sym', text: r.symbol }) },
-      { label: 'Type', get: (r) => h('span', { class: 'pc', text: (r.right === 'C' ? 'Covered call' : 'CSP') + (r.contracts > 1 ? ` x${r.contracts}` : '') }) },
-      { label: 'Strike', r: true, get: (r) => price(r.strike) },
-      { label: 'Expiry', r: true, m: true, get: (r) => shortDate(r.expiry) },
+    const cols = [
+      { label: 'Stock', get: (r) => h('div', {}, h('span', { class: 'sym', text: r.symbol }), fsub((r.right === 'C' ? 'call' : 'put') + (r.contracts > 1 ? ` x${r.contracts}` : '') + (r.days ? `, ${shortDate(r.expiry)}` : ''))) },
+      { label: 'Strike', r: true, get: (r) => h('div', {}, h('div', { text: price(r.strike) }), fsub(`${spct(r.distance, 1)} from price`)) },
       { label: 'Premium', r: true, get: (r) => h('div', {}, h('div', { text: price(r.premium) }), kindTag(r)) },
-      { label: 'Collateral', r: true, m: true, get: (r) => money(r.collateral * r.contracts, 0) },
-      { label: 'Return / week', r: true, get: (r) => pct(r.week, 2) },
-      { label: 'From price', r: true, m: true, get: (r) => spct(r.distance, 1) },
+      { label: 'Per week', r: true, get: (r) => h('div', {}, h('div', { text: pct(r.week, 2) }), fsub(`${money(r.credit, 0)} on ${money(r.collateral * r.contracts, 0)}`)) },
       { label: 'Delta', r: true, m: true, get: (r) => (isNum(r.delta) ? r.delta.toFixed(2) : '-') },
       { label: 'Why', cls: () => 'why', get: (r) => r.reason }];
-    const sec = (title, rows, sub) => h('section', { class: 'block' }, card(title, sub ? h('p', { class: 'sub', text: sub }) : null, rows.length ? h('div', { class: 'opt-table' }, table(optCols(), rows)) : h('p', { class: 'dim', text: 'Nothing passes the rules this week.' })));
-    const longs = mn.long || [];
-    const longCalls = longs.filter((x) => x.strategy === 'call'), collars = longs.filter((x) => x.strategy === 'collar');
-    fill(body, top,
-      ...mn.notes.map((n) => h('div', { class: 'alert', style: 'margin-top:14px' }, icon(WARN_ICON), h('div', { text: n }))),
-      sec('Covered calls', mn.calls, 'Underwater lots show a safe strike at or above your basis and a target strike near 0.25-0.30 delta with the loss it would lock in.'),
-      sec('Cash-secured puts at support', mn.puts, 'Strikes at or under a support level (swing low, 50-day or 200-day average). Sorted with fresh dips that held first.'),
-      longCalls.length ? sec('30-45 day calls', longCalls, 'An alternative to weeklies on your biggest holdings.') : null,
-      collars.length ? h('section', { class: 'block' }, card('Hedge a big holding (collar)', h('p', { class: 'sub', text: 'Sell a call and buy a put on the same date: protection below the put, upside capped at the call.' }), table([
-        { label: 'Ticker', get: (r) => h('span', { class: 'sym', text: r.symbol }) },
-        { label: 'Expiry', r: true, get: (r) => shortDate(r.expiry) },
+    const group = (title, hint, rows, tbl) => [h('div', { class: 'osub' }, h('h3', { text: title }), h('em', { text: hint })),
+      rows.length ? h('div', { class: 'opt-table' }, tbl || table(cols, rows)) : h('p', { class: 'dim', style: 'margin:0;font-size:13.5px', text: 'Nothing passes your rules this week.' })];
+    const longs = mn.long || [], longCalls = longs.filter((x) => x.strategy === 'call'), collars = longs.filter((x) => x.strategy === 'collar');
+    fill(box,
+      h('div', { class: 'mstrip' },
+        mcell('Expiry', shortDate(mn.expiry), '', MARKET_STATE[mn.market] || mn.market),
+        mcell('Target', `${mn.target[0]}-${mn.target[1]}% a week`, '', 'premium on the money held'),
+        mcell('Margin cushion', cu ? money(cu.excess, 0) : '-', cu ? tone(cu.excess) : '', cu ? 'equity minus maintenance' : ''),
+        mcell(cu && cu.symbol ? `If ${cu.symbol} moves 10%` : 'A 10% move', cu && isNum(cu.ten_pct) ? money(cu.ten_pct, 0) : '-', '', 'change in the cushion')),
+      ...mn.notes.map((x) => h('div', { class: 'alert', style: 'margin:12px 0 0' }, icon(WARN_ICON), h('div', { text: x }))),
+      ...group('Covered calls', 'a safe strike at or above your cost, and one near 0.28 delta', mn.calls),
+      ...group('Cash-secured puts at support', 'at or under a swing low or the 50 or 200-day average', mn.puts),
+      ...(longCalls.length ? group('30-45 day calls', 'instead of weeklies, on your biggest holdings', longCalls) : []),
+      ...(collars.length ? group('Hedge a big holding (collar)', 'sell a call, buy a put: a floor and a cap', collars, table([
+        { label: 'Stock', get: (r) => h('div', {}, h('span', { class: 'sym', text: r.symbol }), fsub(shortDate(r.expiry))) },
         { label: 'Sell call', r: true, get: (r) => `${price(r.call_strike)} @ ${price(r.call_premium)}` },
         { label: 'Buy put', r: true, get: (r) => `${price(r.put_strike)} @ ${price(r.put_premium)}` },
         { label: 'Net', r: true, cls: (r) => tone(r.credit), get: (r) => smoney(r.credit, 0) },
-        { label: 'Why', cls: () => 'why', get: (r) => r.reason }], collars))) : null,
-      h('section', { class: 'block' }, card('Skip this week', h('ul', { class: 'skips' }, mn.skips.map((x) => h('li', {}, h('b', { text: x.symbol }), ` ${x.side}: ${x.reason}`))))),
-      h('p', { class: 'note', text: `Built ${new Date(mn.generated).toLocaleString()}. "quote" is the bid/ask middle, "estimate" is Black-Scholes from the chain's IV, "last" is the last trade. Check your broker's mid before selling.` }));
+        { label: 'Why', cls: () => 'why', get: (r) => r.reason }], collars)) : []),
+      h('p', { class: 'note', style: 'margin-top:14px', text: `Built ${new Date(mn.generated).toLocaleString()}. "quote" is the bid/ask middle, "estimate" is Black-Scholes from the chain's IV, "last" is the last trade. Check your broker's mid before selling.` }));
+    fill(skipBox, mn.skips.length ? moreList(mn.skips, 6, (rows) => h('div', { class: 'rows' }, rows.map((x) => h('div', { class: 'row skiprow' },
+      h('div', { class: 'l' }, h('div', {}, h('b', { class: 'sym', text: x.symbol }), h('span', { class: 'faint', text: ` ${x.side}` })), fsub(x.reason))))), 'skips')
+      : h('p', { class: 'dim', style: 'margin:0;font-size:13.5px', text: 'Nothing skipped this week.' }));
+  }
+
+  async function fillWheel(box, wt, m) {
+    if (!ST.wheel || ST.wheelFor !== m.as_of) { ST.wheel = await api('/api/wheel').catch((e) => ({ error: e.message })); ST.wheelFor = m.as_of; }
+    const w = ST.wheel;
+    if (!box.isConnected) return;
+    const val = wt.querySelector('.val'), small = wt.querySelector('.small');
+    if (w.error) { fill(box, h('div', { class: 'alert bad', text: w.error })); val.textContent = '-'; return; }
+    const c = w.closed, o = w.open, all = w.trades || [];
+    const net = c.net + o.net;
+    val.textContent = all.length ? smoney(net, 0) : 'None'; val.className = 'val ' + (all.length ? tone(net) : '');
+    small.textContent = all.length ? `closed ${smoney(c.net, 0)}, open ${smoney(o.net, 0)}` : 'no put has assigned shares yet';
+    if (!all.length) { fill(box, h('p', { class: 'dim', style: 'margin:0', text: 'No put has assigned you shares yet, and no block of 100 shares was bought to sell calls on. When one is, it shows up here as one trade, start to finish.' })); return; }
+    const prem = c.options + o.options, shr = c.shares + o.shares;
+    const multi = new Set(all.map((t) => t.account)).size > 1;
+    const head = () => h('div', { class: 'wth', 'aria-hidden': 'true' }, h('span', { text: 'Stock' }), h('span', { text: 'When' }), h('span', { class: 'r hide-m', text: 'Shares in' }),
+      h('span', { class: 'r hide-m', text: 'Premium' }), h('span', { class: 'r hide-m', text: 'Shares' }), h('span', { class: 'r', text: 'Net' }), h('span'));
+    fill(box,
+      h('p', { class: 'dim wintro', text: 'A broker books an assigned put’s premium as profit and shows the shares on their own. Each row here is one whole trade, from the put that handed you the shares to their sale, with the calls sold on them in between. Open trades count the shares at today’s price. Click a trade for every step.' }),
+      h('div', { class: 'mstrip' },
+        mcell('Closed trades', smoney(c.net, 0), tone(c.net), c.n ? `${c.n} done, ${c.won} made money` : 'none finished yet'),
+        mcell('Open trades, so far', smoney(o.net, 0), tone(o.net), o.n ? `${o.n} open, shares worth ${money(o.value, 0)}` : 'none open'),
+        mcell('Premium in them', smoney(prem, 0), tone(prem), 'what the contracts alone show'),
+        mcell('What the shares did', smoney(shr, 0), tone(shr), w.under > 0 ? `${money(w.under, 0)} under water when assigned` : 'bought at or under the market')),
+      moreList(all, all.filter((t) => !t.end).length + 5, (rows) => h('div', { class: 'wtl' }, head(), rows.map((t) => wheelRow(t, multi))), 'trades'));
+  }
+  function wheelRow(t, multi) {
+    const open = !t.end;
+    const sum = h('summary', {},
+      h('span', { class: 'ws' }, h('b', { class: 'sym', text: t.symbol }), open ? h('span', { class: 'tag', text: 'open' }) : null, multi ? h('em', { text: t.account }) : null),
+      h('span', { class: 'wd' }, `${shortDate(t.start)} to ${open ? 'now' : shortDate(t.end)}`, h('em', { text: `${t.days} day${t.days === 1 ? '' : 's'}` })),
+      h('span', { class: 'r hide-m', text: `${qty(t.shares_in)} at ${price(t.avg_in)}` }),
+      h('span', { class: 'r hide-m ' + tone(t.options), text: smoney(t.options, 0) }),
+      h('span', { class: 'r hide-m ' + tone(t.shares), text: smoney(t.shares, 0) }),
+      h('span', { class: 'r net ' + tone(t.net), text: smoney(t.net, 0) }),
+      h('i', { class: 'chev', 'aria-hidden': 'true' }));
+    const d = h('details', { class: 'wt' }, sum);
+    d.addEventListener('toggle', () => { if (d.open && d.children.length === 1) d.append(wheelBody(t)); });
+    return d;
+  }
+  function wheelBody(t) {
+    const open = !t.end, sold = t.shares - t.shares_open, kept = t.options - t.options_open;
+    const kv = (l, v, cls) => h('div', { class: 'kv' }, h('span', { text: l }), h('span', { class: cls || '', text: v }));
+    const tied = t.avg_in && t.max_qty ? t.avg_in * t.max_qty : null;
+    const facts = h('div', { class: 'wfacts' },
+      kv('Premium kept', smoney(kept, 2), tone(kept)),
+      t.options_open ? kv('Open contracts, if bought back now', smoney(t.options_open, 2), tone(t.options_open)) : null,
+      !open || Math.abs(sold) > 0.005 ? kv(open ? 'Shares sold so far' : 'Shares, bought to sold', smoney(sold, 2), tone(sold)) : null,
+      t.qty ? kv(`${qty(t.qty)} shares now at ${price(t.price)}`, smoney(t.shares_open, 2), tone(t.shares_open)) : null,
+      t.dividends ? kv('Dividends on these shares', smoney(t.dividends, 2), tone(t.dividends)) : null,
+      kv('Net', smoney(t.net, 2), tone(t.net)),
+      tied ? kv('On the most money it held', spct(t.net / tied, 1), tone(t.net)) : null,
+      t.under > 0 ? kv('Under water on assignment', money(t.under, 0)) : null,
+      t.left > 0 ? kv('Left on the table when called away', money(t.left, 0)) : null);
+    const x = (n) => (n > 1 ? ` x${qty(n)}` : '');
+    const rows = t.legs.map((l) => {
+      let what = '', sub = '', amt = null;
+      if (l.kind === 'assigned') {
+        what = `${l.contract ? optLabel(l.contract) : 'Put'} assigned: bought ${qty(l.qty)} at ${price(l.price)}`;
+        sub = isNum(l.close) ? `${t.symbol} closed at ${price(l.close)} that day${l.under > 0 ? `, ${money(l.under, 0)} under water` : ''}. Amount is the put’s premium.` : 'Amount is the put’s premium.';
+        amt = isNum(l.premium) ? l.premium : null;
+      } else if (l.kind === 'bought') {
+        what = `Bought ${qty(l.qty)} at ${price(l.price)}`; sub = 'A block of 100s, with calls sold on it';
+      } else if (l.kind === 'call' || l.kind === 'put') {
+        what = `Sold ${optLabel(l.contract)}${x(l.qty)}: ${OPT_HOW[l.how] || l.how}`;
+        if (l.part) sub = `${pct(l.part, 0)} of it counted here; the rest was covered by your other shares`;
+        amt = l.amount;
+      } else if (l.kind === 'called') {
+        what = `Called away: sold ${qty(l.qty)} at ${price(l.price)}`;
+        sub = [l.contract ? optLabel(l.contract) : '', l.left > 0 ? `${t.symbol} closed at ${price(l.close)}, ${money(l.left, 0)} left on the table` : '',
+          isNum(l.premium) ? `premium ${smoney(l.premium)}, shares ${smoney(l.gain)}` : ''].filter(Boolean).join('. ');
+        amt = (l.premium || 0) + l.gain;
+      } else if (l.kind === 'sold' || l.kind === 'moved') {
+        what = l.kind === 'sold' ? `Sold ${qty(l.qty)} at ${price(l.price)}` : `Moved ${qty(l.qty)} to another account`;
+        sub = 'Against what the trade paid for them'; amt = l.gain;
+      } else if (l.kind === 'dividend') {
+        what = 'Dividend on these shares'; amt = l.amount;
+      } else if (l.kind === 'split') {
+        what = `Split: ${l.ratio >= 1 ? `${+l.ratio.toFixed(4)} for 1` : `1 for ${Math.round(1 / l.ratio)}`}`; sub = 'Share count adjusted';
+      } else if (l.kind === 'open') {
+        what = `Open: ${optLabel(l.contract)}${x(l.qty)}, sold for ${money(l.premium)}`;
+        sub = (l.quoted ? 'What it is worth if bought back now' : 'No quote: counted at what it was sold for') + (l.part ? `; ${pct(l.part, 0)} of it counted here` : '');
+        amt = l.amount;
+      }
+      return h('li', {}, h('time', { text: shortDate(l.d) }), h('span', {}, what, sub ? h('span', { class: 's', text: sub }) : null),
+        h('span', { class: 'a ' + tone(amt), text: isNum(amt) ? smoney(amt, 2) : '' }));
+    });
+    if (open && t.qty) rows.push(h('li', { class: 'now' }, h('time', { text: 'Today' }),
+      h('span', {}, `${qty(t.qty)} shares at ${price(t.price)}`, h('span', { class: 's', text: `Worth ${money(t.value, 0)}; the trade paid ${price((t.value - t.shares_open) / t.qty)} a share for them` })),
+      h('span', { class: 'a ' + tone(t.shares_open), text: smoney(t.shares_open, 2) })));
+    return h('div', { class: 'wtbody' }, facts, h('ol', { class: 'wlegs' }, rows));
+  }
+
+  // the record: every closed contract by month, by how it ended, by kind and by stock
+  function optRecordParts(m) {
+    const o = m.options || {}, k = o.kinds || {}, oc = o.outcomes || {}, n = (x) => (x && x.n) || 0;
+    if (!o.count) return null;
+    const bm = o.by_month || [], c = h('div', { class: 'chart' });
+    requestAnimationFrame(() => barChart(c, { months: bm.map((r) => r.month), values: bm.map((r) => r.pnl), colorFn: (v) => (v >= 0 ? 'var(--up)' : 'var(--down)'), fmt: smoney, toneTip: true, name: 'All contracts', height: 230,
+      extraTip: (i) => [{ label: 'Selling', value: smoney(bm[i].sold, 0), cls: tone(bm[i].sold) }, { label: 'Buying', value: smoney(bm[i].bought, 0), cls: tone(bm[i].bought) }] }));
+    const row = (label, x) => h('div', { class: 'kv' }, h('span', { text: `${label} (${qty(n(x))})` }), h('span', { class: tone((x || {}).pnl), text: smoney((x || {}).pnl || 0, 0) }));
+    return {
+      chart: card('Closed contracts by month', c),
+      ended: n(k.calls) + n(k.puts) ? card('How sold contracts ended', row('Expired worthless', oc.expired), row('Bought back', oc['bought back']), row('Assigned', oc.assigned),
+        h('p', { class: 'note', text: m.sells_options ? 'Assigned counts the premium only. Wheel trades follows the shares it moved to the end.' : 'Assigned counts the premium only, not what the shares did after.' })) : null,
+      kind: card('By kind', row('Calls sold', k.calls), row('Puts sold', k.puts), row('Bought', k.bought)),
+      byStock: card('Options by stock', moreList(o.by_underlying || [], 10, (rows) => table([
+        { label: 'Stock', get: (x) => h('span', { class: 'sym', text: x.symbol }) },
+        { label: 'Contracts', r: true, m: true, get: (x) => qty(x.n) },
+        { label: 'Selling', r: true, cls: (x) => tone(x.sold), get: (x) => (x.sold ? smoney(x.sold, 0) : '') },
+        { label: 'Buying', r: true, cls: (x) => tone(x.bought), get: (x) => (x.bought ? smoney(x.bought, 0) : '') },
+        { label: 'Net', r: true, cls: (x) => tone(x.pnl), get: (x) => smoney(x.pnl, 0) }], rows, { onRow: (x) => openSymbol(x.symbol) }), 'stocks')) };
   }
 
   function income(page, m) {
@@ -1502,14 +1706,14 @@
     const mi = (m.costs || {}).ttm || {};
     page.append(h('div', { class: 'grid g4' },
       tile('Dividends, next 12 months', money(inc.annual, 0), '', `about ${money(inc.monthly, 0)} a month on what you hold now`),
-      tile('All income, next 12 months', smoney((inc.next12 || {}).net, 0), tone((inc.next12 || {}).net), `with options at last year\u2019s pace and today\u2019s loan interest`),
+      tile('All income, next 12 months', smoney((inc.next12 || {}).net, 0), tone((inc.next12 || {}).net), (inc.next12 || {}).selling ? 'with option premium at last year\u2019s pace and today\u2019s loan interest' : 'dividends less today\u2019s loan interest'),
       tile('Received, last 12 months', money(inc.received_ttm, 0), '', 'dividends, in-lieu and return of capital'),
       tile('Margin interest, last 12 months', money(mi.margin_interest || 0, 0), mi.margin_interest ? 'down' : '', 'what the loan cost')));
     const yrs = inc.by_year || [], n12 = inc.next12 || {};
     const ybox = h('div', { class: 'chart' });
     const yrows = yrs.filter((b) => b.dividends || b.options || b.interest || b.kind === 'projected');
     page.append(h('section', { class: 'block grid g2' },
-      card('Income by year', h('p', { class: 'dim', style: 'margin:0 0 10px;font-size:13.5px', text: `Past years are what came in. ${new Date().getFullYear()} is so far plus the rest of the year at today\u2019s pace; later years are projected from today\u2019s holdings with each one\u2019s own dividend growth, options at the last 12 months\u2019 pace, and interest on today\u2019s loan${n12.margin_rate ? ` (about ${pct(n12.margin_rate, 1)} a year)` : ''}.` }), ybox),
+      card('Income by year', h('p', { class: 'dim', style: 'margin:0 0 10px;font-size:13.5px', text: `Past years are what came in. ${new Date().getFullYear()} is so far plus the rest of the year at today\u2019s pace; later years are projected from today\u2019s holdings with each one\u2019s own dividend growth, ${n12.selling ? 'option premium at the last 12 months\u2019 pace' : 'no option premium (selling options is off)'}, and interest on today\u2019s loan${n12.margin_rate ? ` (about ${pct(n12.margin_rate, 1)} a year)` : ''}.` }), ybox),
       card('By year, in numbers', table([
         { label: 'Year', get: (b) => h('span', {}, String(b.year), b.kind === 'projected' ? h('span', { class: 'tag est', style: 'margin-left:6px', text: 'projected' }) : b.kind === 'so far' ? h('span', { class: 'tag', style: 'margin-left:6px', text: 'so far' }) : null) },
         { label: 'Dividends', r: true, get: (b) => money(b.dividends + (b.rest_dividends || 0), 0) },
@@ -1530,11 +1734,11 @@
     const intv = rec.map((r) => r.margin_interest || 0);
     const c1 = h('div', { class: 'chart' }), c2 = h('div', { class: 'chart' }), c3 = h('div', { class: 'chart' });
     page.append(h('section', { class: 'block grid g3 stack' },
-      card('Dividends received', c1), card('Options profit and loss', c2), card('Margin interest paid', c3)));
+      card('Dividends received', c1), card('Options sold', c2), card('Margin interest paid', c3)));
     requestAnimationFrame(() => {
       barChart(c1, { months: rec.map((r) => r.month), values: divv, color: 'var(--s-blue)', name: 'Received', height: 180,
         extraTip: (i) => [{ label: 'paid while lent out', value: money(rec[i].dividend_in_lieu || 0) }, { label: 'return of capital', value: money(rec[i].return_of_capital || 0) }] });
-      barChart(c2, { months: rec.map((r) => r.month), values: optv, colorFn: (v) => (v >= 0 ? 'var(--up)' : 'var(--down)'), name: 'Realized', fmt: smoney, toneTip: true, height: 180 });
+      barChart(c2, { months: rec.map((r) => r.month), values: optv, colorFn: (v) => (v >= 0 ? 'var(--up)' : 'var(--down)'), name: 'Premium kept', fmt: smoney, toneTip: true, height: 180 });
       barChart(c3, { months: rec.map((r) => r.month), values: intv.map((v) => -v), color: 'var(--down)', name: 'Interest', height: 180 });
     });
     const up = inc.upcoming || [];
@@ -1561,7 +1765,7 @@
   }
 
   function analysis(page, m) {
-    const p = m.performance, g = m.grades, d = m.diversification, o = m.options;
+    const p = m.performance, g = m.grades, d = m.diversification;
     page.append(h('h1', { text: 'Analysis' }), h('p', { class: 'sub', text: p.ready ? p.note : 'Needs history first.' }));
     // report card
     const items = Object.entries(g.items || {});
@@ -1616,18 +1820,6 @@
           h('h3', { text: 'Most alike pairs, last 6 months', style: 'margin-top:8px' }),
           h('div', {}, (d.most_alike || []).map((x) => h('div', { class: 'kv' }, h('span', { class: 'mono', text: `${x.a} + ${x.b}` }), h('span', { text: x.corr.toFixed(2) })))))));
     }
-    // options + realized
-    const byU = o.by_underlying || [];
-    const c = h('div', { class: 'chart' });
-    page.append(h('section', { class: 'block grid g2' },
-      card('Options record', h('div', { class: 'grid g3' }, tile('Realized', smoney(o.realized, 0), tone(o.realized)), tile('Win rate', pct(o.win_rate, 0)), tile('Contracts closed', String(o.count))),
-        h('div', { style: 'margin-top:12px' },
-          h('div', { class: 'kv' }, h('span', { text: `Selling premium (${o.short_count})` }), h('span', { class: tone(o.short_pnl), text: smoney(o.short_pnl, 0) })),
-          h('div', { class: 'kv' }, h('span', { text: `Buying options (${o.long_count})` }), h('span', { class: tone(o.long_pnl), text: smoney(o.long_pnl, 0) }))),
-        h('div', { class: 'chart', style: 'margin-top:12px' }, c)),
-      card('Options by stock', table([{ label: 'Stock', get: (x) => h('span', { class: 'sym', text: x.symbol }) }, { label: 'Realized', r: true, cls: (x) => tone(x.pnl), get: (x) => smoney(x.pnl, 0) }],
-        byU.slice(0, 8).concat(byU.length > 12 ? byU.slice(-4) : [])))));
-    requestAnimationFrame(() => barChart(c, { months: o.by_month.map((r) => r.month), values: o.by_month.map((r) => r.pnl), colorFn: (v) => (v >= 0 ? 'var(--up)' : 'var(--down)'), fmt: smoney, toneTip: true, name: 'Realized', height: 170 }));
   }
 
   async function doomSection(box) {
@@ -3196,7 +3388,7 @@
     const about = h('div', { class: 'card about' }, h('div', { class: 'loading', text: 'Loading' }));
 
     // settings first, then accounts, then the data behind them
-    const optCards = [rules];
+    const optCards = [sellCard(m), m.sells_options ? rules : null];      // the selling switch, its rules while it is on
     const col = (...k) => h('div', { class: 'grid' }, ...k.filter(Boolean));
     const sect = (id, title, ...kids) => h('section', { class: 'setsec', id: 'set-' + id }, title ? h('h2', { class: 'section-title', text: title }) : null, ...kids);
     const jumps = h('nav', { class: 'chips setjump', 'aria-label': 'Sections' }, [['settings', 'Settings'], ['accounts', 'Accounts'], ['data', 'Your data'], ['about', 'About']].map(([k, l]) =>

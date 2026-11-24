@@ -30,6 +30,7 @@ data in the background.
 | `fin/market.py`, `fin/sync.py` | Yahoo Finance and Nasdaq: quotes, daily history, splits, dividends, profiles, option chains |
 | `fin/intraday.py` | Live, 1D and 1W chart series |
 | `fin/options.py` | The weekly options menu |
+| `fin/wheel.py` | Wheel trades: an assigned put, the contracts sold on its shares and the shares themselves, as one trade; the Selling options switch |
 | `fin/doom.py` | The Doom score, its cycles, each day's highest and lowest reading |
 | `fin/dip.py` | The Doom dashboard's dip ranking per stock |
 | `fin/valuation.py` | Index P/E and CAPE for the Market page |
