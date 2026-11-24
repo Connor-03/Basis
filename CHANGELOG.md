@@ -2,12 +2,11 @@
 
 ## 1.0.4
 
-- Accounts can be switched off and on in Data and settings, under Accounts. A switched-off account is left out of
-  everything: net worth, history charts, holdings, margin and leverage, income, activity and the dashboards, as if it
-  did not exist. It keeps syncing, and share counts are still matched with the broker, so switching it back on brings
-  it back up to date with every number as before. The home page names any account that is off.
-- A logged transfer between your own accounts with one side switched off is not followed: what lands counts as money
-  coming in, and what leaves counts as money going out. The Moves list says so.
+- **Account switches.** Turn any account off in Data and settings, Accounts, and Basis acts like it isn't there. It keeps syncing in the background, so turning it back on brings it straight back.
+- **Update pop-up.** New versions now pop up in the top right. Close it with the X and it stays gone until the next one.
+- **How it works, on every section.** Hover or tap the ? next to a section title for the method behind the numbers, including when the Doom dashboard says to buy.
+- **Glory Days Net Worth.** The new name for Glory Days Worth. It always measured net worth; now the name says so.
+- **Prices paused.** Yahoo's stock prices run 4 AM to 8 PM Eastern on weekdays. Outside that window the top bar and the Live chart say so, because overnight trading (like Robinhood's 24 Hour Market) can still move your broker's balance.
 
 ## 1.0.3
 

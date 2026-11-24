@@ -8,8 +8,8 @@ through SnapTrade with read-only access, and measures everything the way Connor 
 - **Buy when the market is afraid.** A Doom score from 0 to 100 reads fear, price damage, valuation and crypto every
   trading day since 2010, tracks doom cycles from start to peak to calm, and ranks your stocks for dip buys while one
   is on.
-- **Count what you own, not just what it is worth.** Asset units move only when you buy or sell, and Glory Days Worth
-  shows what today's holdings would be worth at the prices of your all-time-high day.
+- **Count what you own, not just what it is worth.** Asset units move only when you buy or sell, and Glory Days Net
+  Worth shows what your net worth would be if today's holdings went back to the prices of your all-time-high day.
 - **Know your leverage.** A margin buffer estimate at live prices and a leverage multiple that leaves retirement
   accounts out.
 - **Bitcoin is its own thing.** Bitcoin, Bitcoin treasury companies and Bitcoin funds are grouped apart from
@@ -19,7 +19,7 @@ through SnapTrade with read-only access, and measures everything the way Connor 
 
 ![The Doom dashboard](docs/img/doom.png)
 
-![The Assets dashboard with Glory Days Worth](docs/img/assets.png)
+![The Assets dashboard with Glory Days Net Worth](docs/img/assets.png)
 
 The pictures here use a made-up sample portfolio.
 

@@ -112,6 +112,17 @@ def check(settings, force=False):
             _state['error'] = str(e)[:200]
 
 
+def notes_for(version):
+    """The CHANGELOG.md section for a version: what the pop-up shows after an update."""
+    try:
+        with open(os.path.join(paths.APP, 'CHANGELOG.md'), encoding='utf-8') as f:
+            text = f.read()
+    except OSError:
+        return ''
+    start = text.find(f'## {version}\n')
+    return text[start:].split('\n', 1)[1].split('\n## ', 1)[0].strip()[:4000] if start >= 0 else ''
+
+
 def state(settings):
     cur = paths.version()
     with _lock:
@@ -121,7 +132,8 @@ def state(settings):
     return {'supported': supported(), 'mode': paths.MODE, 'current': cur, 'latest': s['latest'], 'available': newer and bool(s['asset']),
             'installer_only': newer and not s['asset'], 'notes': s['notes'] if newer else '', 'url': s['url'],
             'check': bool(settings.get('check', True)), 'checked': s['checked'], 'error': s['error'], 'busy': s['busy'],
-            'step': s['step'], 'customized': customized() if supported() and newer else [], 'last': last}
+            'step': s['step'], 'customized': customized() if supported() and newer else [], 'last': last,
+            'popup_closed': settings.get('popup_closed'), 'current_notes': notes_for(cur) if last and not last.get('seen') else ''}
 
 
 def _last_path():

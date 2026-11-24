@@ -971,7 +971,7 @@ def _history(a, rp, evs, prices, opening, today, acct):
 
 
 def _glory(hist, hists, prices):
-    """Glory Days Worth: each day's holdings at the prices they traded for on the day of the net worth high, plus that
+    """Glory Days Net Worth: each day's holdings at the prices they traded for on the day of the net worth high, plus that
     day's cash, loan and options. Price moves leave it alone; buying adds the gain the new shares would make on the way
     back to the high-day price, selling takes it away. A holding with no price on that day (listed since) counts at the
     day's own price, and accounts that share only a total (and cash in transit) count at their value.

@@ -1197,6 +1197,9 @@ def post_action(p, b):
             return update.apply(agent.snapshot, restart)
         elif act == 'dismiss':
             update.dismiss()
+        elif act == 'popup':                              # the pop-up for this version was closed: not again for it
+            cfg['popup_closed'] = str(b.get('version') or '')[:20]
+            db.set_setting('update', cfg)
         return update.state(cfg)
     if p == '/api/snaptrade/keys':
         conf = snaptrade.load()

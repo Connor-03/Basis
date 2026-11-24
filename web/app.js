@@ -115,12 +115,26 @@
     } catch (e) { ST.error = e.message; }
     syncInfo();
   }
+  // stock prices are live from Yahoo 4 AM to 8 PM Eastern on weekdays (fin/market.py session_now); outside that, or when
+  // the last refresh is old, the top bar and the Live and 1D charts say so
+  function priceFeed(m) {
+    const sy = (m && m.sync) || {}, age = sy.quotes ? Date.now() - new Date(sy.quotes).getTime() : Infinity;
+    if (!sy.session || sy.session === 'closed') return { live: false, text: 'Prices paused' };
+    if (age > 6 * 60e3) return { live: false, text: 'Prices delayed' };
+    return { live: true, text: '' };
+  }
+  function pausedNote(m) {
+    const feed = priceFeed(m);
+    return feed.live ? null : h('button', { type: 'button', class: 'paused inline', 'data-help': 'Live prices', 'aria-expanded': 'false' }, h('i'), feed.text === 'Prices paused' ? 'Not live: stock prices hold at 8 PM ET until 4 AM' : 'Not live: prices are late');
+  }
   function syncInfo() {
     const m = ST.model; if (!m) return;
     const sy = m.sync || {};
     const t = sy.quotes ? new Date(sy.quotes).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'not yet';
-    fill($('#syncInfo'), h('i', { class: sy.session || '' }), h('b', { style: 'font-weight:500;color:var(--body)', text: { regular: 'Market open', pre: 'Pre-market', post: 'After hours', closed: 'Market closed' }[sy.session] || '' }),
-      h('span', { text: `Prices ${t}` }));
+    const feed = priceFeed(m);
+    fill($('#syncInfo'), feed.live ? h('i', { class: sy.session || '' }) : null, h('b', { style: 'font-weight:500;color:var(--body)', text: { regular: 'Market open', pre: 'Pre-market', post: 'After hours', closed: 'Market closed' }[sy.session] || '' }),
+      feed.live ? h('span', { text: `Prices ${t}` }) : h('button', { type: 'button', class: 'paused', 'data-help': 'Live prices', 'aria-expanded': 'false', 'aria-label': feed.text },
+        h('i'), h('em', { class: 'pl', text: feed.text }), h('em', { class: 'ps', text: feed.text.replace('Prices ', '').replace(/^./, (c) => c.toUpperCase()) })));
     fill($('#searchList'), ...m.positions.map((p) => h('option', { value: p.symbol.replace('-USD', ''), label: p.name || '' })));
   }
   // top bar: jump to a symbol, hide the amounts
@@ -535,7 +549,7 @@
     return Math.max(0, i - (i > 0 ? 1 : 0));
   }
 
-  function card(title, ...kids) { return h('div', { class: 'card' }, title ? h('h2', { text: title }) : null, ...kids); }
+  function card(title, ...kids) { return h('div', { class: 'card' }, title ? ht(title) : null, ...kids); }
   function tile(label, value, cls, small) { return h('div', { class: 'card tile' }, h('div', { class: 'label', text: label }), h('div', { class: 'val ' + (cls || ''), text: value }), small ? h('div', { class: 'small', text: small }) : null); }
 
   // ---- pages --------------------------------------------------------------------------------------------------
@@ -597,8 +611,147 @@
   const tier = () => (window.innerWidth >= 3000 ? 4 : window.innerWidth >= 2200 ? 3 : window.innerWidth >= 1500 ? 2 : 1);
   function panel(title, link, ...kids) {
     return h('div', { class: 'card panel' },
-      h('div', { class: 'panel-head' }, h('h2', { text: title }), link ? h('a', { class: 'more', href: link[0], text: link[1] }) : null), ...kids);
+      h('div', { class: 'panel-head' }, ht(title), link ? h('a', { class: 'more', href: link[0], text: link[1] }) : null), ...kids);
   }
+  // ---- "?" beside a section title: how that section works, on hover, keyboard focus or tap ---------------------------
+  // Keyed by the section's title (card() and panel() add the icon on their own); a title that changes with the data
+  // passes a fixed key to ht(). Each entry is a list of paragraphs.
+  const HELP = {
+    'Net worth': [
+      'Everything in your linked accounts at live prices, cash included and any margin loan taken off, plus the other assets you added in Data and settings. An account switched off there is left out.',
+      'The returns are time-weighted: money you add or take out does not count as gain or loss, so they show how the holdings did. The vs M2 row sets each return against the growth of the M2 money supply over the same days. Above zero you kept ahead of the new money being created; under it you lost ground even when the return is positive.',
+      'Gain is net worth minus the money you put in, less what you took out, since the first day the history shows money in an account.'],
+    'Holdings map': [
+      'Each box is a holding, sized by its value across all accounts. Color is today’s move, the total gain, or how far the price is under its all-time high, depending on the button. Small positions fold into one Other box.'],
+    'Margin buffer': [
+      'An estimate at live prices of the room before a margin call: what the margin account is worth after the loan, minus the maintenance the broker requires.',
+      'Maintenance adds up each holding’s rate: the broker’s own rate where you entered one (Data and settings, Margin rates per stock), 25% for the rest, 25% times the leverage for leveraged funds and 100% for stocks under $3. A short put holds its full strike as cash. If you lined the estimate up with your broker on the Margin page, the estimated rates are scaled to match.',
+      'A call after a drop of: how far everything in the account would have to fall together for the buffer to reach zero. Your broker’s own number is the one that counts.'],
+    'Accounts': [
+      'Each account’s value: holdings at live prices plus cash, less any margin loan, with today’s change and the last 90 trading days. A transfer you logged between your own accounts shows as on the way until it lands, so net worth does not dip while it moves.',
+      'An account switched off in Data and settings is left out of every number in Basis, as if it did not exist. It keeps syncing, so switching it back on brings it back up to date.'],
+    'Biggest moves today': ['The holdings with the largest dollar change today across all your accounts, at live prices.'],
+    'Coming up': ['The next three weeks: dividend payments (marked estimate when the company has not declared one yet and the date comes from its past schedule), earnings dates, your options that expire, and Fed rate decisions.'],
+    'Income': [
+      'The next 12 months: dividends from the shares you hold at each holding’s current rate, option premium at the pace of the last 12 months, less margin interest on today’s loan at today’s rate.',
+      'Years marked * are projected the same way, with each holding’s own dividend growth.'],
+    'What you own': [
+      'By type groups holdings by what they are. Bitcoin & Equivalents is Bitcoin, Bitcoin funds and companies that keep Bitcoin as their treasury; other coins and their equivalents are Crypto & Equivalents.',
+      'Sectors look through funds to what they hold, so a Nasdaq-100 fund adds to Technology and the rest in its own weights. Moves with bitcoin is the share of your holdings whose price has moved closely with Bitcoin’s.'],
+    'Options this week': ['Ideas for options expiring this Friday that pass your rules (Data and settings, Options menu rules): covered calls on lots of 100 shares and cash-secured puts. Return is the premium over the money held, per week. Basis only suggests; nothing is traded.'],
+    'Options menu': [
+      'Every idea follows rules, not a model: covered calls on lots of 100 shares and cash-secured puts at support, Monday for Friday, plus longer calls and collars for your biggest holdings. Your rules (Data and settings) set the weekly return target on the money held, per-stock limits like no puts or calls only above your cost, and news days to wait out.',
+      'A stock is skipped when its shares are already covered, earnings land before expiry, it fell hard in the last 5 days (selling a call into the bounce pays pennies), or its option chain is not available.',
+      'Premiums are the middle of bid and ask, the last trade when the market is closed, or an estimate from the chain’s implied volatility, as labeled.'],
+    'Hedge a big holding (collar)': ['For a holding that is a large share of your stock: sell a call above the price and use the premium toward a put below it. The put protects you under its strike, the call caps the gain above its strike, and the two premiums offset each other.'],
+    'Market valuation': [
+      'The S&P 500 and Nasdaq-100 P/E and the Shiller P/E against their own last 20 years. The dot is where today sits: within one spread of the typical level is fair, one to two above is overvalued, more than two is strongly overvalued, and the same below for undervalued.',
+      'The typical level is the median and the spread comes from the median distance from it, so one earnings collapse (the S&P 500 read 123 in May 2009) does not skew twenty years. Valuation says little about the next few months; it is a better guide to the next ten years.'],
+    'Doom score': [
+      'How hard fear is pressing on prices, 0 to 100, scored the same way for every trading day since 2010 so today can be lined up with past bottoms.',
+      'Thirteen readings in four groups: Fear 40% (CNN Fear & Greed, the VIX, the VIX against its 3-month version, the put/call ratio, the junk bond spread), Price damage 30% (S&P 500 and Nasdaq-100 under their 52-week highs, the S&P 500 against its 200-day average and its one-month return), Valuation 15% (P/E against its own 10-year median) and Crypto 15% (Crypto Fear & Greed, Bitcoin under its 52-week high). Each reading is ranked against every day since 2010: a VIX higher than on 90% of those days scores 90.',
+      'What to do with it: high doom has been the time to buy, in steps, while everyone else is selling. The Doom dashboard has the cycle, your buying room and which stocks look best. It measures fear, it does not call the bottom: the low can still be weeks away.'],
+    'Today against past bottoms': ['Today’s score and its four groups next to the days the market bottomed in past panics. It shows which kind of fear today has, and how far it is from what those bottoms looked like. Bottoms came at different levels, so a match is not a signal on its own.'],
+    'Doom score over time': ['The score every trading day since 2010. The shaded band is 80 and up, where past panics peaked; gold dots are the past bottoms used for comparison; the dashed line is today’s level. Hover for the S&P 500 that day.'],
+    'Every reading, today against past bottoms': ['Each of the thirteen readings today and on each past bottom, with its 0 to 100 fear score, so you can see which part of today’s fear is high and which is not there yet. Your own portfolio’s fall from its high is shown for comparison and is not scored.'],
+    'After the score first reached': [
+      'Every time since 2010 the score first reached today’s level (a new time only after 40 trading days below it), and what the S&P 500 did next: how much further it fell before turning, how many days the low took, and where it was 3 months and a year later.',
+      'This is the evidence behind buying in high doom. Read the last column for how often buying then paid off within a year, and the further-fall column for how much patience it took. Past results, not a promise.'],
+    'Every panic since 2010': ['The most fearful day of each stretch at 80 or above, what was going on, and the S&P 500 three months and a year later.'],
+    'M2 money supply: the bar to beat': [
+      'M2 is cash, checking and savings deposits and money market funds: roughly the dollars in circulation. When it grows faster than your holdings, every dollar you hold is worth less, even if the number went up. Basis measures every return against it, and a loan that costs less than M2 grows is cheap money.',
+      'Monthly Federal Reserve figures, spread over the days of each month; days after the last published month carry on at the last 12 months’ pace.'],
+    'Stocks against bonds': ['The S&P 500 earnings yield (earnings over price, the P/E turned upside down) against the 10-year Treasury yield. When stocks earn less than a safe bond pays, buyers are paying up for growth; historically that has come before lower long-run returns more often than higher ones.'],
+    'Against their own history': ['Each P/E over time against its own typical level (the median) and the bands one and two spreads either side. Trailing P/E jumps when earnings collapse, so the charts cap those spikes.'],
+    'Doom cycle': [
+      'A doom cycle starts the day the doom score closes at 65 or higher. Its peak is the highest close until it ends, and it ends after 10 trading days in a row under 45. A cycle that peaks at 80 or higher is an era of doom. Rising means a new high in the last 3 trading days, Easing 10 or more points under the peak.',
+      'How to use it for buying: a cycle starting is the signal to get ready, not to spend everything. The S&P 500’s low has tended to come at or near the doom peak (the card gives the median gap for every era since 2010), and the peak is only known afterwards, so buying in steps from the start through the peak spreads the risk of being early.'],
+    'Room to buy': [
+      'Your margin buffer from the Margin page, turned into buying room: $1,000 of a stock the broker holds at 25% uses about $250 of it, more for stocks set higher. Crypto sold adds its full value.',
+      'The buffer shrinks as prices fall, just when buying looks best, and using all of it leaves nothing for a further fall. A margin call sells at the worst prices, so keep some room back.'],
+    'This cycle against the last five eras': ['The doom score by trading day since each cycle started, for this cycle and the last five eras of doom. It shows whether this one is climbing faster or slower than past eras did, and how long they took to peak.'],
+    'Eras of doom': [
+      'Every cycle since 2010 that peaked at 80 or higher: days to peak, length, how far the S&P 500 fell from the start of the cycle to its low, how many days its low came before or after the doom peak, and the S&P 500 three months and a year after the doom peak.',
+      'The last two columns are what buying at the doom peak would have earned.'],
+    'Where to buy the dip': [
+      'Runs while a doom cycle is on. Every stock you hold or watch gets a dip score from 0 to 100, ranked against the others here: in a crash nearly everything looks cheap against its own past, so the useful question is which looks best right now.',
+      'Value 30% (P/E against its own last 3 years, forward P/E, PEG), Quality 25% (expected earnings growth, revenue growth, profit margin), Pullback 15% (under the 52-week high), Analysts 15% (rating, price target, ratings rising or falling) and Strength 15% (3-month return against the S&P 500, and whether it is still making new lows).',
+      'The top picks leave out anything over 10% of your holdings, companies with no positive earnings and stocks with too little data. A pick is the best of today’s numbers, not a forecast: analyst targets lag in a crash and expected growth can be cut.'],
+    'Compare': ['Up to four stocks side by side on every reading behind the dip score. The higher scorer gets its main reasons listed, and anything to watch for.'],
+    'Every stock, ranked': ['Every stock you hold or watch, by dip score. P/E paid → now sets the P/E you paid (your lots’ cost over the earnings known on each buy date) against today’s. Target is the analysts’ average price target against the price, shown with three or more analysts. Crowd is the share of bullish tags on the latest 30 StockTwits posts. Funds get no score.'],
+    'Weakest of what you hold': ['Your holdings worth $100 or more with the lowest dip scores. Not a sell signal on its own: these are the least attractive to add to while the cycle lasts.'],
+    'Your moves': ['Decisions you log (a sale, a buy, a swap, a transfer between your accounts) with the market and your portfolio that day, and how each has worked out since at today’s prices. A sale is ahead when what you sold is worth less now than you got for it. It keeps your own calls honest.'],
+    'Assets': [
+      'What you own before the margin loan is taken off: net worth plus the loan. It shows how much is at work in the market.',
+      'Live, 1D and 1W price the holdings you have now through the day. 1M and longer use each day’s own holdings, so a sale shows as a drop. Days the loan moved $500 or more are listed under the chart.',
+      'Glory Days Net Worth is a net worth figure, with the loan already taken off: compare it with net worth, not with assets.'],
+    'Glory Days Net Worth': [
+      'Your net worth if every holding you have today went back to its price on the day of your highest net worth. Today’s cash, loan and options count as they are.',
+      'Price moves do not change it; your trades do. Buying a holding that sits further under its high-day price raises it by the gain those shares would make on the way back; selling takes that away. Money added or taken out counts as if it were there on the high day.',
+      'It shows whether your moves since the top set you up for a bigger recovery. It does not say prices will get back there.'],
+    'Glory holdings': ['Every holding you have now, and every one sold since your high, at its price on the high day. To get back is how far the price must rise to return there; adds on the way back is what that rise would add for the shares you hold now.'],
+    'Sectors (funds looked through)': ['Your holdings by sector, with each fund split into the sectors of what it holds. Bitcoin, crypto and the companies that hold them as a treasury are grouped on their own instead of under Technology or Financial Services.'],
+    'What moves together': ['How closely your largest holdings’ daily returns moved together over the last 6 months, from -1 to 1. Two holdings near 1 rise and fall together, so owning both spreads risk less than it looks.'],
+    'If the market falls': ['The margin account if everything in it fell 10%, 20%, 30% and 40% together: what you would have after the loan, what maintenance would require, and the buffer left. Under zero is a margin call.'],
+    'What each holding needs': ['Each holding’s maintenance: its value times its rate (your broker’s where you entered one, 25% for the rest, more for leveraged funds and stocks under $3). Alone, a call after: how far that one holding would have to fall, everything else unchanged, to use the whole buffer.'],
+    'Line up the estimate': ['Enter the buffer your broker shows and Basis scales the estimated rates (the holdings without a rate of their own) until its buffer matches. Holdings with your broker’s rate entered keep it.'],
+    'Positions': ['Every holding across your accounts. Cost basis is first in, first out by lot, the way Robinhood counts realized gains; shares a broker never showed being bought use its average cost, or show as unknown. vs M2 sets the value against what the cost would be if it had only kept up with the money supply since each buy. From high is the distance under the all-time high at the live price.'],
+    'Income by year': ['Dividends, option profit and loss, and margin interest for each year. This year is what came in so far plus the rest of the year projected; later years are projected from today’s holdings with each one’s own dividend growth, options at the last 12 months’ pace and interest on today’s loan.'],
+    'Projected dividends by month': ['What today’s shares should pay in each of the next 12 months, from each holding’s dividend schedule at its current rate. Payments not declared yet are estimates.'],
+    'Live prices': [
+      'Basis gets stock prices from Yahoo Finance, live on weekdays from 4:00 AM to 8:00 PM Eastern: pre-market from 4:00, the regular session from 9:30 to 4:00, after hours until 8:00. Crypto is live around the clock.',
+      'Outside that window stock prices stay at the last trade before 8:00 PM. Robinhood’s 24 Hour Market keeps trading overnight (Sunday 8 PM to Friday 8 PM Eastern), so your broker’s numbers can move while these stay put. The two line up again when pre-market opens at 4:00 AM.'],
+    'Your margin rate': ['The yearly rate on the loan. Basis works it out from the last interest charge and the average loan in the 30 days before it, or uses the rate you enter.'],
+  };
+  function helpIcon(key) {
+    return HELP[key] ? h('button', { type: 'button', class: 'qhelp', 'data-help': key, 'aria-label': 'How this works', 'aria-expanded': 'false' }, '?') : null;
+  }
+  function ht(title, key, attrs) { return h('h2', attrs || {}, title, helpIcon(key || title)); }
+  const qtip = h('div', { class: 'qtip', id: 'qtip', role: 'tooltip', hidden: true });
+  document.body.append(qtip);
+  let qFor = null, qPinned = false, qTimer = 0;
+  function qShow(btn, pin) {
+    clearTimeout(qTimer);
+    const paras = HELP[btn.dataset.help];
+    if (!paras) return;
+    if (qFor && qFor !== btn) qFor.setAttribute('aria-expanded', 'false');
+    qFor = btn; qPinned = !!pin;
+    fill(qtip, ...paras.map((t) => h('p', { text: t })));
+    qtip.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    btn.setAttribute('aria-describedby', 'qtip');
+    const r = btn.getBoundingClientRect(), w = Math.min(380, window.innerWidth - 24);
+    qtip.style.width = w + 'px';
+    qtip.style.left = Math.max(12, Math.min(r.left - 14, window.innerWidth - w - 12)) + 'px';
+    const tall = qtip.offsetHeight, below = r.bottom + 8;
+    const top = below + tall > window.innerHeight - 8 && r.top - 8 - tall > 8 ? r.top - 8 - tall : below;
+    qtip.style.top = Math.max(8, Math.min(top, window.innerHeight - tall - 8)) + 'px';
+  }
+  function qClose() {
+    clearTimeout(qTimer);
+    if (qFor) { qFor.setAttribute('aria-expanded', 'false'); qFor.removeAttribute('aria-describedby'); }
+    qFor = null; qPinned = false; qtip.hidden = true;
+  }
+  document.addEventListener('mouseover', (e) => {
+    const b = e.target.closest ? e.target.closest('[data-help]') : null;
+    if (b) { if (b !== qFor) qShow(b, false); else clearTimeout(qTimer); return; }
+    if (e.target.closest && e.target.closest('.qtip')) { clearTimeout(qTimer); return; }
+    if (qFor && !qPinned) { clearTimeout(qTimer); qTimer = setTimeout(qClose, 160); }
+  });
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest ? e.target.closest('[data-help]') : null;
+    if (b) { e.preventDefault(); e.stopPropagation(); if (b === qFor && qPinned) qClose(); else qShow(b, true); return; }
+    if (qFor && !(e.target.closest && e.target.closest('.qtip'))) qClose();
+  }, true);
+  document.addEventListener('focusin', (e) => { if (e.target.dataset && e.target.dataset.help && e.target !== qFor) qShow(e.target, false); });
+  document.addEventListener('focusout', (e) => { if (e.target === qFor && !qPinned) qClose(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && qFor) { const b = qFor; qClose(); b.focus(); } });
+  window.addEventListener('scroll', () => {
+    if (!qFor) return;
+    const r = qFor.getBoundingClientRect();
+    if (!qFor.isConnected || r.bottom < 0 || r.top > window.innerHeight) qClose(); else qShow(qFor, qPinned);
+  }, { passive: true, capture: true });
+  window.addEventListener('resize', () => { if (qFor) qClose(); });
   function sparkline(values, color) {
     const vals = values.filter(isNum);
     const svg = s('svg', { viewBox: '0 0 120 32', class: 'spark', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
@@ -771,7 +924,7 @@
     const loanSub = mg && mg.rate ? [`${pct(mg.rate, 2)} a year`, CENSOR ? '' : `, ${money(-mg.interest_year / 12, 0)} a month`,
       isNum(mg.vs_m2) ? h('span', { class: mg.vs_m2 <= 0 ? 'up' : 'down', text: `. ${Math.abs(mg.vs_m2 * 100).toFixed(2)} pts ${mg.vs_m2 <= 0 ? 'under' : 'over'} M2` }) : null] : '';
     return h('div', { class: 'card hero2' },
-      h('div', { class: 'hmain' }, h('div', { class: 'hnum' }, h('div', { class: 'label', text: 'Net worth' }), h('div', { class: 'big', text: money(m.net_worth, 0) }),
+      h('div', { class: 'hmain' }, h('div', { class: 'hnum' }, h('div', { class: 'label' }, 'Net worth', helpIcon('Net worth')), h('div', { class: 'big', text: money(m.net_worth, 0) }),
         h('div', { class: 'hdelta' }, h('span', { class: 'pill ' + tone(m.day_change), text: `${spct(dayPct, 2)} today` }),
           CENSOR ? null : h('span', { class: 'delta ' + tone(m.day_change), text: smoney(m.day_change, 0) })),
         m.extended && Math.abs(m.extended.move) >= 1 ? h('div', { class: 'delta ' + tone(m.extended.move), style: 'font-size:13px;margin-top:6px', text: `${chgText(m.extended.move, m.extended.move / (m.net_worth - m.extended.move))} ${m.extended.session === 'pre' ? 'pre-market' : 'after hours'}` }) : null),
@@ -1020,7 +1173,7 @@
   function assetsButton(m) {
     const g = m.glory;
     return h('a', { class: 'btn doom-btn', href: '/assets' }, h('span', { text: 'Assets dashboard' }),
-      h('em', { text: g ? `Glory Days Worth ${money(g.now, 0)}` : '' }));
+      h('em', { text: g ? `Glory Days Net Worth ${money(g.now, 0)}` : '' }));
   }
 
   // assets: what you own before the margin loan; a sale that pays down the loan shows as a drop here, not in net worth.
@@ -1032,7 +1185,7 @@
     const A = hs.assets, L = hs.loan, V = hs.value, F = hs.flow, dates = hs.dates, n = dates.length, i1 = n - 1;
     const color = { a: 'var(--s-you)', l: 'var(--s-loan)' };
     const box = h('div', { class: 'chart' }, ikey ? h('div', { class: 'loading', text: 'Loading' }) : null);
-    const head = h('div', { class: 'panel-head ahead' }, h('h2', { text: 'Assets' }),
+    const head = h('div', { class: 'panel-head ahead' }, ht('Assets'),
       h('div', { class: 'chips' }, CHART_RANGES.map((k) => h('button', { class: 'chip' + (R === k ? ' on' : '') + (k === 'Live' ? ' live' : ''), text: k, onclick: () => { ST.range = k; render(); } }))));
     const byDay = tradesByDay(m), top = topTrades;
     const loanDays = (i0) => {
@@ -1069,7 +1222,8 @@
         const AV = d.value.map((v, i) => v + loan[i]);
         const base = ikey === '1d' && isNum(d.prev_close) ? d.prev_close + (m.loan || 0) : AV[0], chg = AV[k - 1] - base;
         fill(sum, h('span', { class: 'mid', text: money(AV[k - 1], 0) }),
-          h('span', { class: 'mono ' + tone(chg), text: `${smoney(chg, 0)} (${spct(base ? chg / base : null, 2)}) ${INTRA_WORD[ikey]}` }));
+          h('span', { class: 'mono ' + tone(chg), text: `${smoney(chg, 0)} (${spct(base ? chg / base : null, 2)}) ${INTRA_WORD[ikey]}` }),
+          ikey === 'live' || ikey === '1d' ? pausedNote(m) : null);
         legend.append(h('span', {}, h('i', { class: 'dash' }), ikey === '1d' ? 'Previous close' : 'Start'));
         const ax = intraAxis(d, ikey, box);
         lineChart(box, { ...ax, series: [{ name: 'Assets', color: color.a, values: AV }], refs: [{ y: base, color: 'var(--s-ref)' }],
@@ -1200,7 +1354,8 @@
     const base = key === '1d' && isNum(d.prev_close) ? d.prev_close : d.value[0];
     const chg = d.value[n - 1] - base;
     const word = INTRA_WORD[key];
-    fill(summary, h('b', { class: tone(chg), text: `${smoney(chg, 0)} (${spct(chg / base, 2)})` }), h('span', { class: 'dim', text: ` ${word}` }));
+    fill(summary, h('b', { class: tone(chg), text: `${smoney(chg, 0)} (${spct(chg / base, 2)})` }), h('span', { class: 'dim', text: ` ${word}` }),
+      key === 'live' || key === '1d' ? pausedNote(ST.model) : null);
     let series, fmt, yfmt, refs = [];
     if (chartMode() === 'value') {
       series = [{ name: 'You', color: 'var(--s-you)', values: d.value }];
@@ -1243,7 +1398,7 @@
 
   function positions(page, m) {
     const [key, dir] = ST.sort;
-    page.append(h('div', { class: 'head' }, h('div', {}, h('h1', { text: 'Positions' }), h('p', { class: 'sub', text: `${m.positions.length} holdings across ${openAccounts(m).filter((a) => a.rows).length} account(s), ${money(m.invested, 0)} invested` })),
+    page.append(h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Positions', helpIcon('Positions')), h('p', { class: 'sub', text: `${m.positions.length} holdings across ${openAccounts(m).filter((a) => a.rows).length} account(s), ${money(m.invested, 0)} invested` })),
       h('div', { class: 'chips' },
         h('button', { class: 'chip' + (ST.showAth ? ' on' : ''), text: 'From all-time high', title: 'Show how far each price is under its all-time high', onclick: () => {
           ST.showAth = !ST.showAth;
@@ -1292,7 +1447,7 @@
   }
 
   async function options(page, m) {
-    page.append(h('div', { class: 'head' }, h('div', {}, h('h1', { text: 'Options menu' }), h('p', { class: 'sub', text: 'Covered calls and cash-secured puts for this week, from live chains and your rules. No AI: the rules are listed in Data and settings.' })),
+    page.append(h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Options menu', helpIcon('Options menu')), h('p', { class: 'sub', text: 'Covered calls and cash-secured puts for this week, from live chains and your rules. No AI: the rules are listed in Data and settings.' })),
       h('button', { class: 'btn', text: 'Refresh chains', onclick: async (e) => { e.target.disabled = true; e.target.textContent = 'Fetching'; ST.menu = await api('/api/options?refresh=1').catch((er) => ({ error: er.message })); render(); } })));
     const body = h('div', {}, h('div', { class: 'loading', text: 'Reading option chains (a few seconds)' }));
     page.append(body);
@@ -1478,9 +1633,9 @@
     const now = d.now, marks = d.marks, comps = d.components;
     // 1. today, the scale, the groups, today against the remembered bottoms
     const top = h('div', { class: 'grid g2 stack' },
-      h('div', { class: 'card' }, h('h2', { text: 'Doom score' }), doomHead(d, true), doomGauge(d), doomGroups(d),
+      h('div', { class: 'card' }, ht('Doom score'), doomHead(d, true), doomGauge(d), doomGroups(d),
         h('p', { class: 'dim', style: 'font-size:13.5px;margin:14px 0 0', text: doomLine(d) }), doomButton(d)),
-      h('div', { class: 'card' }, h('h2', { text: 'Today against past bottoms' }), doomCompare(d),
+      h('div', { class: 'card' }, ht('Today against past bottoms'), doomCompare(d),
         h('div', { class: 'dnotes' }, marks.map((mk) => h('p', {}, h('b', { text: `${mk.name}, ${longDate(mk.date)}. ` }), mk.note || '')))));
     // 2. history
     const range = ST.doomRange || '5Y';
@@ -1489,7 +1644,7 @@
     let i0 = 0;
     if (back) { const s0 = new Date(Date.now() - back * 864e5).toISOString().slice(0, 10); i0 = Math.max(0, hs.dates.findIndex((x) => x >= s0)); }
     const chartBox = h('div', { class: 'chart' });
-    const histCard = h('div', { class: 'card' }, h('div', { class: 'head' }, h('h2', { text: 'Doom score over time', style: 'margin:0' }), chips),
+    const histCard = h('div', { class: 'card' }, h('div', { class: 'head' }, ht('Doom score over time', null, { style: 'margin:0' }), chips),
       h('div', { class: 'legend' }, h('span', {}, mkKey('var(--s-doom)'), 'Doom score'), h('span', {}, mkKey('var(--gold)', true), 'Past bottoms'), h('span', {}, h('i', { class: 'dash' }), 'Today’s level'), h('span', {}, mkKey('rgba(229,72,77,0.16)', true), 'Panic (80 and up)')),
       chartBox);
     // 3. every reading, today against each bottom
@@ -1518,12 +1673,12 @@
         if (r.kind === 'you') return isNum(sn.you_dd) ? spct(sn.you_dd, 1) : '-';
         return cell(fmtRaw(r.c, sn), (sn.components[r.c.key] || {}).score);
       } }))];
-    const cmpCard = h('div', { class: 'card' }, h('h2', { text: 'Every reading, today against past bottoms' }),
+    const cmpCard = h('div', { class: 'card' }, ht('Every reading, today against past bottoms'),
       h('p', { class: 'dim', style: 'margin:0 0 10px;font-size:13.5px', text: 'Each cell is the reading and its 0 to 100 fear score. P/E rows show the estimated P/E and how far it sits from its own 10-year median.' }),
       (() => { const t = table(cols, rows); t.classList.add('dtable'); return t; })());
     // 4. what happened after readings like today's
     const b = d.base, eps = d.episodes || [];
-    const epCard = h('div', { class: 'card' }, h('h2', { text: `After the score first reached ${Math.round(now.score)}` }),
+    const epCard = h('div', { class: 'card' }, ht(`After the score first reached ${Math.round(now.score)}`, 'After the score first reached'),
       h('p', { class: 'dim', style: 'margin:0 0 10px;font-size:13.5px', text: b ? `${b.count} times since 2010 (counting a new time only after 40 trading days below it). Before turning, the S&P 500 fell a median ${pct(-b.median_further_drop, 1)} more, worst ${pct(-b.worst_further_drop, 1)}, and the low came a median ${Math.round(b.median_days_to_low)} trading days later. Three months on it was a median ${spct(b.median_3m, 1)}; a year on, higher ${b.up_12m} of ${b.n_12m} times (median ${spct(b.median_12m, 1)}). Past results only, not a forecast.` : 'Not enough history at this level.' }),
       table([
         { label: 'First reached', get: (e) => shortDate(e.date) + (e.complete ? '' : ' (still going)') },
@@ -1535,7 +1690,7 @@
         { label: '3 months later', r: true, cls: (e) => tone(e.fwd['63']), get: (e) => (isNum(e.fwd['63']) ? spct(e.fwd['63'], 1) : '-') },
         { label: '1 year later', r: true, cls: (e) => tone(e.fwd['252']), get: (e) => (isNum(e.fwd['252']) ? spct(e.fwd['252'], 1) : '-') }], [...eps].reverse()));
     const pk = d.peaks || [];
-    const pkCard = h('div', { class: 'card' }, h('h2', { text: 'Every panic since 2010' }),
+    const pkCard = h('div', { class: 'card' }, ht('Every panic since 2010'),
       h('p', { class: 'dim', style: 'margin:0 0 10px;font-size:13.5px', text: 'The most fearful day of each stretch at 80 or above, what was going on, and what the S&P 500 did after it.' }),
       table([
         { label: 'Day', get: (x) => shortDate(x.date) },
@@ -1555,7 +1710,7 @@
       markers: marks.filter((mk) => mk.date >= dates[0]).map((mk) => ({ date: mk.date, value: mk.score, color: 'var(--gold)', label: mk.name, text: mk.score.toFixed(0) })) }));
   }
 
-  // ---- Assets dashboard: Glory Days Worth (analytics._glory) and the assets chart ---------------------------------
+  // ---- Assets dashboard: Glory Days Net Worth (analytics._glory) and the assets chart ---------------------------------
   function assetsPage(page, m) {
     page.classList.add('wide');
     const g = m.glory, hs = m.history;
@@ -1568,7 +1723,7 @@
     const big = (v) => Math.abs(v) >= Math.max(50, Math.abs(g.now) * 0.0005);
     const colors = eff.map((v) => (!isNum(v) || !big(v) ? 'var(--bar-flat)' : v > 0 ? 'var(--bar-up)' : 'var(--bar-down)'));
     const color = { g: 'var(--s-you)', n: 'var(--s-blue)' };
-    const series = [{ name: 'Glory Days Worth', color: color.g, values: line }, { name: 'Net worth', color: color.n, values: nw }];
+    const series = [{ name: 'Glory Days Net Worth', color: color.g, values: line }, { name: 'Net worth', color: color.n, values: nw }];
     const box = h('div', { class: 'chart' });
     const cell = (label, v, sub, cls) => h('div', { class: 'acell' }, h('div', { class: 'faint', text: label }), h('div', { class: 'mono ' + (cls || ''), text: (cls === undefined ? money : smoney)(v, 0) }), h('div', { class: 'faint small', text: sub }));
     const rows = g.rows.filter((r) => isNum(r.change));
@@ -1580,7 +1735,7 @@
       list.length ? list.map((r) => h('div', { class: 'kv' }, h('span', {}, h('b', { class: 'sym', text: sym(r.symbol) }), h('span', { class: 'faint', text: ' ' + dq(r) + (r.qty < 1e-9 ? ', all of it' : '') })),
         h('span', { class: 'mono ' + tone(r.change), text: smoney(r.change, 0) }))) : h('div', { class: 'faint', style: 'font-size:13px', text: 'None' }));
     const glory = h('div', { class: 'card panel' },
-      h('div', { class: 'panel-head' }, h('h2', { text: 'Glory Days Worth' }), h('span', { class: 'tag', text: `${day} prices` })),
+      h('div', { class: 'panel-head' }, ht('Glory Days Net Worth'), h('span', { class: 'tag', text: `${day} prices` })),
       h('div', { class: 'gnum mono', text: money(g.now, 0) }),
       h('div', { class: 'gline' }, h('span', { class: 'mono ' + tone(g.trading), text: smoney(g.trading, 0) }), ` from buying and selling since your ${day} high, at that day’s prices`),
       h('p', { class: 'dim', style: 'font-size:13.5px;margin:4px 0 10px', text: `If every holding went back to its ${day} price, net worth would be ${money(g.now, 0)}, ${money(g.now - g.net_worth, 0)} more than today’s ${money(g.net_worth, 0)}.` }),
@@ -1593,12 +1748,12 @@
         cell(`Net worth on ${day}`, g.high, 'your high'),
         cell('Money in or out since', g.money_in, 'shares and coins at that day’s prices', ''),
         cell('Buying and selling', g.trading, 'with dividends, interest and options', tone(g.trading)),
-        cell('Glory Days Worth', g.now, 'now')),
+        cell('Glory Days Net Worth', g.now, 'now')),
       h('div', { class: 'gmovesrow' }, moveList(`Added since ${day}, at that day’s prices`, adds), moveList(`Sold since ${day}, at that day’s prices`, cuts)));
-    requestAnimationFrame(() => lineChart(box, { dates, series, fmt: (v) => money(v, 0), height: (tier() >= 2 ? 300 : 230) + 70, label: 'Glory Days Worth since the high',
+    requestAnimationFrame(() => lineChart(box, { dates, series, fmt: (v) => money(v, 0), height: (tier() >= 2 ? 300 : 230) + 70, label: 'Glory Days Net Worth since the high',
       refs: [{ y: g.start, color: 'var(--s-ref)' }],
       strip: { values: eff.map((v, i) => (i === 0 ? null : v)), colors, height: 58, zero: true, fmt: (v) => smoney(v, 0) },
-      sync: { group: 'home', id: 'glory', keys: dayKeys(dates), label: (i) => ['Glory Days Worth', money(line[i], 0)] },
+      sync: { group: 'home', id: 'glory', keys: dayKeys(dates), label: (i) => ['Glory Days Net Worth', money(line[i], 0)] },
       extraTip: (i) => {
         const out = [];
         if (i > 0 && isNum(eff[i]) && Math.abs(eff[i]) >= 1) out.push({ label: 'Buying and selling that day', value: smoney(eff[i], 0), cls: big(eff[i]) ? tone(eff[i]) : '' });
@@ -1629,7 +1784,7 @@
       { label: 'To get back', key: 'back', r: true, m: true, get: (r) => (r.star && r.price ? spct(r.star / r.price - 1, 0) : ''), cls: (r) => (r.star && r.price ? tone(r.star / r.price - 1) : '') },
       { label: `Worth at ${day} price`, key: 'worth', r: true, get: (r) => (isNum(r.worth) ? money(r.worth, 0) : '') },
       { label: 'Adds on the way back', key: 'upside', r: true, m: true, get: (r) => (isNum(r.upside) ? smoney(r.upside, 0) : ''), cls: (r) => (isNum(r.upside) ? tone(r.upside) : '') }];
-    const holdCard = h('div', { class: 'card panel' }, h('div', { class: 'panel-head' }, h('h2', { text: `Your holdings at ${day} prices` }), h('span', { class: 'faint', style: 'font-size:12.5px', text: `${g.rows.filter((r) => r.qty > 1e-9).length} held, ${g.rows.filter((r) => r.qty <= 1e-9).length} sold since` })),
+    const holdCard = h('div', { class: 'card panel' }, h('div', { class: 'panel-head' }, ht(`Your holdings at ${day} prices`, 'Glory holdings'), h('span', { class: 'faint', style: 'font-size:12.5px', text: `${g.rows.filter((r) => r.qty > 1e-9).length} held, ${g.rows.filter((r) => r.qty <= 1e-9).length} sold since` })),
       table(cols, shown, { sortKey: sortKey[0], sortDir: sortKey[1], onSort: (key) => { ST.gsort = [key, sortKey[0] === key ? -sortKey[1] : -1]; render(); }, onRow: (r) => openSymbol(r.symbol) }),
       sorted.length > 25 ? h('div', { style: 'margin-top:10px' }, h('button', { class: 'btn small', text: ST.gall ? 'Show the top 25' : `Show all ${sorted.length}`, onclick: () => { ST.gall = !ST.gall; render(); } })) : null);
     page.append(h('div', { class: 'adash' }, glory, assetsCard(m, { page: true })), h('div', { style: 'margin-top:14px' }, holdCard));
@@ -2267,6 +2422,25 @@
     const show = u.supported && (u.available || u.installer_only || (u.last && !u.last.seen) || u.busy);
     updateBtn.hidden = !show;
     if (show) fill(updateBtn, h('i'), u.last && !u.last.seen && !u.available ? 'Updated' : 'Update');
+    paintUpPop(u);
+  }
+  // the same news as a pop-up in the top right corner, until it is closed with its X (once per version)
+  const upPop = h('div', { class: 'uppop', role: 'status', 'aria-live': 'polite', hidden: true });
+  document.body.append(upPop);
+  function paintUpPop(u) {
+    const fresh = !!(u.last && !u.last.seen && !u.available && !u.installer_only);
+    const out = (u.available || u.installer_only) && u.popup_closed !== u.latest && !u.busy;
+    if (!u.supported || !(fresh || out)) { upPop.hidden = true; return; }
+    const x = h('button', { type: 'button', class: 'uppop-x', 'aria-label': 'Close', title: 'Close' }, '\u00d7');
+    x.addEventListener('click', async () => {
+      upPop.hidden = true;
+      await api('/api/update', { json: fresh ? { action: 'dismiss' } : { action: 'popup', version: u.latest } }).catch(() => null);
+      checkUpdate();
+    });
+    fill(upPop, h('div', { class: 'uppop-head' }, h('i'), h('b', { text: fresh ? `Basis updated to ${u.last.to}` : `Basis ${u.latest} is out` }), x),
+      h('p', { text: fresh ? `You were on ${u.last.from}. Your data and settings are as they were.` : `You have ${u.current}. Updating takes under a minute, keeps your data, and puts the old version back if the new one does not start.` }),
+      h('div', { class: 'cbtns' }, h('button', { type: 'button', class: 'btn small primary', text: fresh ? 'What changed' : 'See what’s new', onclick: openUpdate })));
+    upPop.hidden = false;
   }
   const waitRestart = async (box) => {
     fill(box, h('div', { class: 'loading', text: 'Restarting. This takes up to a minute.' }));
@@ -2287,6 +2461,7 @@
         const files = u.last.replaced || [];
         kids.push(h('div', { class: 'card flat', style: 'margin-bottom:14px' }, h('h3', { text: `Updated to ${u.last.to}` }),
           h('p', { class: 'dim', style: 'font-size:13.5px', text: files.length ? `The update replaced ${files.length} file${files.length === 1 ? '' : 's'} you had changed. Your versions are saved in the folder ${u.last.kept} inside the program folder.` : `You were on ${u.last.from}. Nothing of yours was replaced.` }),
+          u.current_notes ? h('div', { class: 'md', style: 'margin:4px 0 12px' }, md(u.current_notes)) : null,
           files.length ? h('div', { class: 'cfiles', style: 'margin-bottom:10px' }, files.map((f) => h('span', { class: 'tag', text: f }))) : null,
           h('div', { class: 'cbtns' },
             files.length ? h('button', { class: 'btn small primary', type: 'button', text: 'Ask Claude to bring them back', onclick: async () => {
@@ -2364,7 +2539,8 @@
     setInterval(() => { fetch('/api/ping', { headers: { 'X-Requested-With': 'finance' } }).catch(() => {}); }, 10000);
     window.addEventListener('pagehide', () => { try { fetch('/api/bye', { keepalive: true, headers: { 'X-Requested-With': 'finance' } }); } catch (e) { /* closing anyway */ } });
     checkUpdate();
-    setInterval(checkUpdate, 3600e3);
+    setTimeout(checkUpdate, 90e3);                // the program asks GitHub just after it starts: catch that answer
+    setInterval(checkUpdate, 600e3);
   }
 
   // ---- Doom dashboard (fin/dip.py, fin/doom.py cycles) ---------------------------------------------------------
@@ -2387,7 +2563,7 @@
     // 1. the cycle
     const phases = ['Rising', 'Peaking', 'Easing', 'Calming'];
     const stepper = h('div', { class: 'phases' }, [...phases, 'Ended'].map((ph) => h('span', { class: cur && cur.phase === ph ? 'on' : '', text: ph })));
-    const cycCard = h('div', { class: 'card' }, h('div', { class: 'panel-head' }, h('h2', { text: 'Doom cycle' }), h('span', { class: 'tag ' + (cur ? 'bad' : ''), text: cur ? 'On' : 'Standby' })),
+    const cycCard = h('div', { class: 'card' }, h('div', { class: 'panel-head' }, ht('Doom cycle'), h('span', { class: 'tag ' + (cur ? 'bad' : ''), text: cur ? 'On' : 'Standby' })),
       cur ? h('div', {},
         h('div', { class: 'dhead' }, h('div', { class: 'dscore', text: cur.now.toFixed(0) }),
           h('div', {}, h('div', { class: 'dlabel', text: d.label || '' }), h('div', { class: 'faint', style: 'font-size:12px', text: `Peak so far ${doomPeak(cur).toFixed(0)} on ${longDate(doomPeakDate(cur))}` }))),
@@ -2403,7 +2579,7 @@
       h('p', { class: 'faint', style: 'font-size:12px;margin:10px 0 0', text: `Rules: a cycle starts at ${rules.start}; its peak is the highest score until it ends; it ends after ${rules.calm_days} trading days in a row under ${rules.calm}. Rising means a new high in the last 3 trading days, Easing means 10 or more points under the peak. A cycle that peaks at ${rules.era} or higher is an era of doom. These rules, and every past cycle, use the closing reading of each day. The peak shown for this cycle is the highest reading at any moment, which can sit above the highest close.` }));
     // 2. margin room
     const mg = d.margin || {}, buf = mg.buffer;
-    const marginCard2 = h('div', { class: 'card' }, h('div', { class: 'panel-head' }, h('h2', { text: 'Room to buy' }), h('a', { class: 'more', href: '/risk', text: 'Margin' })),
+    const marginCard2 = h('div', { class: 'card' }, h('div', { class: 'panel-head' }, ht('Room to buy'), h('a', { class: 'more', href: '/risk', text: 'Margin' })),
       isNum(buf) ? h('div', {},
         h('div', { class: 'mid ' + (buf < 0 ? 'down' : buf < 2000 ? 'warn' : 'up'), text: money(buf, 0) }, h('span', { class: 'dim', style: 'font-size:14px;margin-left:8px', text: 'margin buffer (estimate)' })),
         h('p', { class: 'dim', style: 'font-size:13.5px', text: buf < 0
@@ -2420,14 +2596,14 @@
     const series = show.map((e, k) => ({ name: `${e.name || 'Era'} (${e.peak_date.slice(0, 4)})`, color: ERA_COLORS[k], values: idx.map((i) => e.path[i] ?? null), width: 1.6, opacity: 0.75 }));
     if (cur) series.push({ name: 'This cycle', color: 'var(--s-doom)', values: idx.map((i) => cur.path[i] ?? null), width: 3 });
     const pathBox = h('div', { class: 'chart' });
-    const pathCard = h('div', { class: 'card' }, h('h2', { text: 'This cycle against the last five eras' }),
+    const pathCard = h('div', { class: 'card' }, ht('This cycle against the last five eras'),
       h('p', { class: 'dim', style: 'margin:0 0 8px;font-size:13px', text: 'Doom score by trading day since each cycle started.' }),
       h('div', { class: 'legend' }, series.map((sr) => h('span', {}, mkKey(sr.color), sr.name))), pathBox);
     // 4. eras table
     const allEras = [...eras].reverse();
     const eraRows = [...(cur ? [{ ...cur, name: 'This cycle', current: true }] : []), ...(ST.allEras ? allEras : allEras.slice(0, 6))];
     const scares = cyc.scares || [];
-    const eraCard = h('div', { class: 'card' }, h('h2', { text: `Eras of doom since 2010 (peak ${rules.era} or higher)` }),
+    const eraCard = h('div', { class: 'card' }, ht(`Eras of doom since 2010 (peak ${rules.era} or higher)`, 'Eras of doom'),
       table([
         { label: 'Era', get: (e) => h('div', {}, h('div', { style: e.current ? 'font-weight:600;color:var(--text)' : '', text: e.name || 'Unnamed' }), h('div', { class: 'faint', style: 'font-size:12px', text: `${shortDate(e.start)} to ${e.end ? shortDate(e.end) : 'now'}` })) },
         { label: 'Peak', r: true, get: (e) => h('div', {}, h('div', { class: 'mono', text: e.peak.toFixed(0) }), h('div', { class: 'faint', style: 'font-size:12px', text: shortDate(e.peak_date) })) },
@@ -2444,7 +2620,7 @@
     // 5. the dip analysis
     const on = d.active || ST.dipForce;
     if (!on) {
-      parts.push(h('div', { class: 'block card' }, h('h2', { text: 'Where to buy the dip' }),
+      parts.push(h('div', { class: 'block card' }, ht('Where to buy the dip'),
         h('p', { class: 'dim', text: `Standby. The full analysis turns on when a doom cycle starts (score ${rules.start}) and stays on until it ends.` }),
         h('button', { class: 'btn', text: 'Run it anyway', onclick: () => { ST.dipForce = true; render(); } })));
     } else parts.push(...dipSections(d));
@@ -2460,7 +2636,7 @@
 
   // ---- moves: decisions you log, then and now --------------------------------------------------------------
   function movesBlock() {
-    const box = h('div', { class: 'block card moves-card' }, h('div', { class: 'panel-head' }, h('h2', { text: 'Your moves' })), h('div', { class: 'loading', text: 'Loading' }));
+    const box = h('div', { class: 'block card moves-card' }, h('div', { class: 'panel-head' }, ht('Your moves')), h('div', { class: 'loading', text: 'Loading' }));
     (async () => {
       if (!ST.moves || Date.now() - ST.moves.at > 60e3) ST.moves = { d: await api('/api/moves').catch((e) => ({ error: e.message })), at: Date.now() };
       if (!box.isConnected && ST.page !== 'doom') return;
@@ -2469,7 +2645,7 @@
     return box;
   }
   function movesBody(d) {
-    const head = h('div', { class: 'panel-head' }, h('h2', { text: 'Your moves' }),
+    const head = h('div', { class: 'panel-head' }, ht('Your moves'),
       h('button', { class: 'btn small', text: ST.moveEdit ? 'Close' : 'Log a move', onclick: () => { ST.moveEdit = ST.moveEdit ? null : {}; fill(box0(), ...movesBody(d)); } }));
     if (d.error) return [head, h('div', { class: 'alert bad', text: d.error })];
     const list = d.moves || [];
@@ -2634,7 +2810,7 @@
       metric('Value / Quality / Pullback / Analysts / Strength', (r) => ['value', 'quality', 'pullback', 'analysts', 'trend'].map((k) => (isNum((r.parts || {})[k]) ? r.parts[k].toFixed(0) : '-')).join(' / ')),
     ];
     const best = sel.length > 1 ? sel.reduce((a, b) => ((b.score || -1) > (a.score || -1) ? b : a)) : null;
-    const cmpCard = h('div', { class: 'card' }, h('h2', { text: 'Compare' }), chips, cmsg,
+    const cmpCard = h('div', { class: 'card' }, ht('Compare'), chips, cmsg,
       sel.length ? table([{ label: '', get: (mt) => h('span', { class: 'dim', text: mt.label }) },
         ...sel.map((r) => ({ label: r.symbol + (best && best.symbol === r.symbol ? ' (higher score)' : ''), r: true, cls: (mt) => (mt.cls ? mt.cls(r) : ''), get: (mt) => mt.f(r) }))], metrics) : h('p', { class: 'faint', text: 'Pick up to four.' }),
       best && sel.length > 1 ? h('p', { class: 'dim', style: 'font-size:13.5px;margin:10px 0 0', text: `${best.symbol} scores higher: ${best.reasons.slice(0, 3).join('; ')}.` + (best.flags.length ? ` Watch: ${best.flags.join('; ')}.` : '') }) : null);
@@ -2642,7 +2818,7 @@
     const filt = ST.dipFilter || 'all';
     const fchips = h('div', { class: 'chips' }, [['all', 'All stocks'], ['held', 'Holdings'], ['watch', 'Watch list'], ['fund', 'Funds']].map(([k, l]) => h('button', { class: 'chip' + (filt === k ? ' on' : ''), text: l, onclick: () => { ST.dipFilter = k; render(); } })));
     const list = rows.filter((r) => (filt === 'fund' ? r.fund : !r.fund && (filt === 'all' || r.source === filt)));
-    const rankCard = h('div', { class: 'card' }, h('div', { class: 'head' }, h('h2', { text: 'Every stock, ranked', style: 'margin:0' }), fchips),
+    const rankCard = h('div', { class: 'card' }, h('div', { class: 'head' }, ht('Every stock, ranked', null, { style: 'margin:0' }), fchips),
       table([
         { label: 'Stock', get: (r) => h('div', {}, h('div', { class: 'sym', text: r.symbol + (r.source === 'watch' ? ' · watch' : '') }), h('div', { class: 'name', text: r.name })) },
         { label: 'Dip score', get: (r) => (r.fund ? h('span', { class: 'faint', text: 'fund' }) : scoreBar(r.score)) },
@@ -2655,14 +2831,14 @@
         { label: 'Watch for', m: true, get: (r) => h('span', { class: 'warn', style: 'font-size:12.5px', text: r.flags.join('; ') }) }], list, { onRow: (r) => openSymbol(r.symbol) }));
     // weakest of what you hold
     const weak = stocks.filter((r) => r.source === 'held' && (r.value || 0) >= 100).slice(-6).reverse();
-    const weakCard = h('div', { class: 'card' }, h('h2', { text: 'Weakest of what you hold' }),
+    const weakCard = h('div', { class: 'card' }, ht('Weakest of what you hold'),
       h('p', { class: 'dim', style: 'margin:0 0 8px;font-size:13px', text: 'Lowest dip scores among holdings worth $100 or more. Not a sell signal on its own; these are the least attractive to add to.' }),
       table([
         { label: 'Stock', get: (r) => h('span', { class: 'sym', text: r.symbol }) },
         { label: 'Score', r: true, get: (r) => r.score.toFixed(0) },
         { label: 'Value', r: true, get: (r) => money(r.value, 0) },
         { label: 'Why', get: (r) => h('span', { class: 'dim', style: 'font-size:12.5px', text: [...r.flags, ...r.reasons.slice(0, 2)].join('; ') }) }], weak, { onRow: (r) => openSymbol(r.symbol) }));
-    return [h('h2', { class: 'section-title', text: 'Where to buy the dip' }),
+    return [ht('Where to buy the dip', null, { class: 'section-title' }),
       h('p', { class: 'sub', text: `The top of ${stocks.length} stocks you hold or watch, ranked against each other (100 is the best of the group). Leaves out positions over 10% of your holdings and companies with no positive earnings.` }),
       pickCards, h('div', { class: 'block' }, cmpCard), h('div', { class: 'block' }, rankCard), h('div', { class: 'block' }, weakCard)];
   }
@@ -2719,7 +2895,7 @@
       const gap = (v, good) => (isNum(v) ? h('span', { class: (v >= 0) === good ? 'up' : 'down', text: `${Math.abs(v * 100).toFixed(2)} pts ${v >= 0 ? 'over' : 'under'} M2` }) : '');
       const per = periodReturns(ST.model).find((r) => r[0] === '1Y') || [];
       const kv = (a, ...v) => h('div', { class: 'kv' }, h('span', { text: a }), h('span', {}, ...v));
-      m2Card = h('div', { class: 'card' }, h('h2', { text: 'M2 money supply: the bar to beat' }),
+      m2Card = h('div', { class: 'card' }, ht('M2 money supply: the bar to beat'),
         h('div', { class: 'grid g4 stack-m' },
           tile('M2 growth, last 12 months', pct(m2.yoy, 2), '', `through ${monthYear(m2.month)}`),
           tile('Last 3 months, yearly pace', pct(m2.three_month, 2), '', 'where it is heading'),
@@ -2739,11 +2915,11 @@
         titleFmt: (d) => new Date(d + 'T12:00:00').toLocaleString('en-US', { month: 'short', year: 'numeric' }) }));
     }
     const yg = mk.yield_gap;
-    const ygCard = yg ? h('div', { class: 'card' }, h('h2', { text: 'Stocks against bonds' }),
+    const ygCard = yg ? h('div', { class: 'card' }, ht('Stocks against bonds'),
       h('div', { class: 'grid g3' }, tile('S&P 500 earnings yield', yg.earnings_yield.toFixed(2) + '%', '', '1 divided by the P/E'), tile('10-year Treasury', yg.treasury.toFixed(2) + '%', '', 'what a safe bond pays'),
         tile('Difference', (yg.gap > 0 ? '+' : '') + yg.gap.toFixed(2) + ' points', yg.gap < 0 ? 'down' : 'up', yg.gap < 0 ? 'bonds pay more than stock earnings' : 'stock earnings pay more than bonds')),
       h('p', { class: 'note', text: 'When the earnings yield is below the Treasury yield, investors are paying up for stocks and counting on growth; historically that has come before lower long-run returns more often than higher ones.' })) : null;
-    fill(body, head, h('div', { class: 'head', style: 'margin:18px 0 10px' }, h('h2', { text: 'Against their own history', style: 'margin:0' }), chips),
+    fill(body, head, h('div', { class: 'head', style: 'margin:18px 0 10px' }, ht('Against their own history', null, { style: 'margin:0' }), chips),
       h('div', { class: 'grid' }, cards), ygCard ? h('section', { class: 'block' }, ygCard) : null, m2Card ? h('section', { class: 'block' }, m2Card) : null,
       h('p', { class: 'note', text: 'Trailing P/E jumps when earnings collapse (the S&P 500 read 123 in May 2009), so charts cap those spikes and the typical level is the median, not the average. Valuation says little about the next few months; it is a better guide to the next ten years.' }));
   }

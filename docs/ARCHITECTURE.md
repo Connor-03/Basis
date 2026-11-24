@@ -26,7 +26,7 @@ data in the background.
 | `fin/secret.py` | Encrypts the SnapTrade consumer key with Windows DPAPI |
 | `fin/reconcile.py` | Lines share counts up with the broker after an account is first linked |
 | `fin/engine.py` | Replays every transaction into FIFO lots, cash, income, option positions |
-| `fin/analytics.py` | Builds the model the page shows: positions, accounts, margin estimate, history, returns, grades, M2 comparisons, Glory Days Worth, type and sector groups |
+| `fin/analytics.py` | Builds the model the page shows: positions, accounts, margin estimate, history, returns, grades, M2 comparisons, Glory Days Net Worth, type and sector groups |
 | `fin/market.py`, `fin/sync.py` | Yahoo Finance and Nasdaq: quotes, daily history, splits, dividends, profiles, option chains |
 | `fin/intraday.py` | Live, 1D and 1W chart series |
 | `fin/options.py` | The weekly options menu |
